@@ -23,7 +23,10 @@ or a path. Kin's origin is `https://quantumbboy.github.io`. That has consequence
 - **Every key is namespaced** with `lore:` (for example `lore:spike:entries`), so Lore data
   never collides with anything else that might share the origin.
 - **The URL must stay stable forever.** If the skill moves to another host, account or custom
-  domain, it starts with empty storage. The only way across is export and re-import.
+  domain, it starts with empty storage. The only way across is export and re-import. So: do not
+  rename the `QuantumBBoy` account or move the repository to another account or organization
+  (new origin, empty storage), and do not rename the `lore` repository (the skill URL saved in the
+  app would stop working).
 - **Forks get their own storage.** A fork served from `https://<someone>.github.io` has a
   separate origin and cannot see your data.
 

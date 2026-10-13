@@ -142,7 +142,7 @@ Lore files are edited by hand and by programs. To keep both working:
   understand.
 - When a producer adds a frontmatter key, it SHOULD add it after the existing keys. When it adds a
   section that does not exist yet, it SHOULD follow the order in section 8.3.
-- A producer MUST NOT rewrite `INDEX.md` by hand-merging; it regenerates it (section 10).
+- Producers regenerate `INDEX.md` instead of editing it (section 10).
 
 ## 5. Value types
 
@@ -476,7 +476,7 @@ An entry is a list item at the start of a line (no indentation) inside a section
 
 ```text
 - [ ] 2026-09-28: Ask how the new job is going {due=2026-10-15}
-│ │   │           │                          └ attribute block (9.5), optional
+│ │   │           │                            └ attribute block (9.5), optional
 │ │   │           └ text
 │ │   └ entry date (9.4), optional: "YYYY-MM-DD: ", "YYYY-MM: " or "YYYY: "
 │ └ checkbox (9.3), optional
