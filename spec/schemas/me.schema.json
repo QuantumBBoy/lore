@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quantumbboy.github.io/lore/spec/0.1/me.schema.json",
+  "title": "Lore 0.1 owner (me.md) frontmatter",
+  "description": "The owner of the folder. Declares the spec version. See spec/SPEC.md, section 7.",
+  "type": "object",
+  "required": [
+    "lore",
+    "name"
+  ],
+  "properties": {
+    "lore": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "name": {
+      "$ref": "common.schema.json#/$defs/name"
+    },
+    "aliases": {
+      "$ref": "common.schema.json#/$defs/aliases"
+    },
+    "pronouns": {
+      "$ref": "common.schema.json#/$defs/shortText"
+    },
+    "birthday": {
+      "$ref": "common.schema.json#/$defs/personDate"
+    },
+    "language": {
+      "$ref": "common.schema.json#/$defs/language",
+      "description": "Preferred language for replies and generated text."
+    },
+    "timezone": {
+      "$ref": "common.schema.json#/$defs/timezone",
+      "description": "Home time zone, used only when the device time zone is unknown."
+    },
+    "leap_day": {
+      "enum": [
+        "feb28",
+        "mar1"
+      ],
+      "default": "feb28",
+      "description": "When to observe 29 February dates in common years."
+    },
+    "sensitivity": {
+      "description": "Sensitivity of this file: one level for the whole file, or a map with a default and per-field levels.",
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/level"
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "default": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "name": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "aliases": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "pronouns": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "birthday": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "language": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "timezone": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "leap_day": {
+              "$ref": "common.schema.json#/$defs/level"
+            }
+          },
+          "patternProperties": {
+            "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9_-]*)+$": {
+              "$ref": "common.schema.json#/$defs/level"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "patternProperties": {
+    "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9_-]*)+$": true
+  },
+  "additionalProperties": false
+}

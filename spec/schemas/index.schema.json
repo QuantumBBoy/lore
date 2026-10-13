@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quantumbboy.github.io/lore/spec/0.1/index.schema.json",
+  "title": "Lore 0.1 INDEX.md frontmatter",
+  "description": "Generated index of the folder. See spec/SPEC.md, section 10.",
+  "type": "object",
+  "required": [
+    "lore",
+    "generated"
+  ],
+  "properties": {
+    "lore": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "generated": {
+      "$ref": "common.schema.json#/$defs/dateTime"
+    },
+    "generator": {
+      "$ref": "common.schema.json#/$defs/shortText",
+      "description": "Name and version of the program that wrote the index."
+    }
+  },
+  "patternProperties": {
+    "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9_-]*)+$": true
+  },
+  "additionalProperties": false
+}
