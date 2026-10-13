@@ -35,7 +35,7 @@ describe('round trips', () => {
   }
 
   test('BOM and CRLF are normalised to what producers must write', () => {
-    const f = LoreFile.parse('﻿---\r\nname: X\r\n---\r\nBody\r\n');
+    const f = LoreFile.parse('\uFEFF---\r\nname: X\r\n---\r\nBody\r\n');
     assert.equal(f.toString(), '---\nname: X\n---\nBody\n');
   });
 
@@ -277,4 +277,21 @@ describe('body', () => {
       .replace('- [X] 2026-01: approximate date\n', '- [X] 2026-01: approximate date\n- 2026-10-13: Pottery class\n');
     assert.equal(f.toString(), expected);
   });
+});
+
+describe('agrees with the independent reader used by the spec tests', async () => {
+  const reference = await import('../../tests/helpers/lore-text.mjs');
+  for (const p of exampleFiles) {
+    test(p, () => {
+      const text = read(p);
+      const ours = LoreFile.parse(text);
+      const theirs = reference.readLoreFile(text);
+      assert.deepEqual(ours.data, theirs.data);
+      const ref = reference.parseBody(theirs.body);
+      assert.deepEqual(
+        ours.body.sections.map((s) => ({ title: s.title, id: s.id, attrs: s.attrs, entries: s.entries.map((e) => [e.checked, e.date, e.text, e.attrs]) })),
+        ref.sections.map((s) => ({ title: s.title, id: s.id, attrs: s.attrs, entries: s.entries.map((e) => [e.checked, e.date, e.text, e.attrs]) })),
+      );
+    });
+  }
 });

@@ -118,12 +118,21 @@ export class LoreFolder {
     return me;
   }
 
+  /** A setting from me.md, or undefined when me.md is missing or unreadable (queries keep working). */
+  setting(key) {
+    try {
+      return this.file('me.md')?.get(key);
+    } catch {
+      return undefined;
+    }
+  }
+
   get language() {
-    return this.me.get('language') ?? 'en';
+    return this.setting('language') ?? 'en';
   }
 
   get leapDay() {
-    return this.me.get('leap_day') === 'mar1' ? 'mar1' : 'feb28';
+    return this.setting('leap_day') === 'mar1' ? 'mar1' : 'feb28';
   }
 
   // -------------------------------------------------------------------------------- people

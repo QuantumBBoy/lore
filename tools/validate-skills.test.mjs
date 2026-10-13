@@ -73,7 +73,7 @@ describe('validateSkillMd', () => {
     expectError(new Uint8Array([0x2d, 0x2d, 0x2d, 0x0a, 0xff, 0xfe]), /not valid UTF-8/);
   });
 
-  test('rejects a BOM', () => expectError('﻿' + GOOD, /byte order mark/));
+  test('rejects a BOM', () => expectError('\uFEFF' + GOOD, /byte order mark/));
   test('rejects CRLF', () => expectError(GOOD.replaceAll('\n', '\r\n'), /CR characters/));
   test('rejects text before the frontmatter', () => expectError('# Title\n' + GOOD, /first line must be exactly '---'/));
   test('rejects leading blank line', () => expectError('\n' + GOOD, /first line/));

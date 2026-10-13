@@ -219,6 +219,14 @@ describe('index and validation', () => {
     for (const re of expect) assert.ok(issues.some((i) => re.test(i)), `missing ${re}\n${issues.join('\n')}`);
   });
 
+  test('queries keep working when me.md is damaged', () => {
+    const folder = load();
+    folder.setText('me.md', 'not a lore file');
+    assert.equal(folder.language, 'en');
+    assert.equal(folder.leapDay, 'feb28');
+    assert.ok(folder.validate().some((i) => i.path === 'me.md' && i.level === 'error'));
+  });
+
   test('a new folder', () => {
     const folder = LoreFolder.create({ name: 'Alex', language: 'es', timezone: 'Europe/Madrid' });
     assert.equal(folder.getText('me.md'), '---\nlore: "0.1"\nname: Alex\nlanguage: es\ntimezone: Europe/Madrid\n---\n\n# Alex\n');

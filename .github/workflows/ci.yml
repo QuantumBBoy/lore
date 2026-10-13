@@ -36,8 +36,10 @@ jobs:
       - name: Validate the built site
         run: node tools/validate-skills.mjs --site _site
 
-      - name: Install Chromium for browser tests
-        run: npx playwright install --with-deps chromium
+      - name: Install Chromium and WebKit (the iPhone's engine) for browser tests
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Unit, privacy and browser tests
         run: npm test
+        env:
+          LORE_REQUIRE_BROWSERS: '1'
