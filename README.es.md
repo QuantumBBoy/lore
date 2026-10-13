@@ -61,7 +61,7 @@ cuenta con sus palabras.
    → Kin devuelve las ideas guardadas y los regalos anteriores, y el modelo propone tres regalos a
    partir de ellos.
 6. `¿Qué cumpleaños tengo en los próximos 12 meses?`
-   → *Marta: cumpleaños en 181 días (12 abr)*
+   → *Marta: cumpleaños en … días (12 abr)*
 
 Kin también guarda planes, tallas, restricciones alimentarias y cosas que preguntarle a alguien.
 Puedes decir cada cuánto quieres hablar con alguien y preguntar con quién vas atrasado. Di `copia

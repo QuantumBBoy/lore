@@ -60,7 +60,7 @@ own way.
 5. `What should I get Marta? Around 40 euros`
    → Kin returns your saved ideas and past gifts, and the model suggests three gifts from them.
 6. `Any birthdays in the next 12 months?`
-   → *Marta: birthday in 181 days (Apr 12)*
+   → *Marta: birthday in … days (Apr 12)*
 
 Kin also keeps plans, sizes, food restrictions and things to ask someone. You can set how often you
 want to talk to someone and ask who is overdue. Say `backup` to save or restore everything.
