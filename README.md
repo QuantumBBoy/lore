@@ -10,9 +10,10 @@ haven't talked to in a while. Nothing leaves the device.
 
 ## Status
 
-**Phase 1: feasibility spike.** Before building Kin we are checking two things on a real iPhone:
-does a skill's webview storage survive an app restart, and do `SKILL.md` + `run_js` work end to
-end? See [docs/spike/PHONE-TEST.md](docs/spike/PHONE-TEST.md).
+- **Phase 1, feasibility spike: done.** A skill served from GitHub Pages keeps its `localStorage`
+  on iPhone after the app is closed ([results](docs/spike/RESULTS.md)).
+- **Phase 2, Lore spec 0.1: draft.** Read [spec/SPEC.md](spec/SPEC.md); the
+  [JSON Schemas](spec/schemas/) and a fictional [example folder](examples/lore/) go with it.
 
 Skill URL for the app ("Load skill from URL"):
 
@@ -24,10 +25,12 @@ https://quantumbboy.github.io/lore/skills/kin-spike
 
 | Path | What it is |
 | --- | --- |
+| `spec/` | The Lore specification and its JSON Schemas. |
+| `examples/lore/` | A complete example Lore folder. Everyone in it is fictional. |
 | `skills/<name>/` | Gallery skills, served from GitHub Pages. |
 | `tools/validate-skills.mjs` | Strict `SKILL.md` validator. It mirrors the app's parser, which is much stricter than YAML. |
-| `tools/build-site.mjs` | Builds the Pages site in `_site/`. |
-| `tests/` | Headless-browser tests that call each skill like the app does, plus a static privacy scan. |
+| `tools/build-site.mjs` | Builds the Pages site in `_site/`: skills, and the spec under `spec/<version>/`. |
+| `tests/` | Spec consistency tests, headless-browser tests that call each skill like the app does, and a static privacy scan. |
 | `.github/workflows/` | CI on every push; deploy to GitHub Pages from `main`. |
 
 ## Development
