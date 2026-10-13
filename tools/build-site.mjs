@@ -11,7 +11,7 @@
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createZip } from './lib/zip.mjs';
+import { createZip } from '../lore-core/src/zip.mjs';
 import { validateSkillMd, validateSkillsRoot } from './validate-skills.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));

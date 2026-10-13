@@ -49,3 +49,6 @@ export function truncate(s, max) {
   const space = cut.lastIndexOf(' ');
   return `${space > max * 0.6 ? cut.slice(0, space) : cut}…`;
 }
+
+/** Files kept as text (UTF-8) rather than bytes when loaded or imported. */
+export const isTextPath = (path) => /\.(md|txt|json|yaml|yml|csv)$/i.test(path);
