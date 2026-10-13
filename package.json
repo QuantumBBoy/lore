@@ -1,0 +1,19 @@
+{
+  "name": "lore",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Lore, an open local-first file format for personal life context, and Kin, its first app.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "validate": "node tools/validate-skills.mjs skills",
+    "build": "node tools/build-site.mjs",
+    "test": "node --test --test-reporter=spec \"tools/**/*.test.mjs\" \"tests/**/*.test.mjs\""
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

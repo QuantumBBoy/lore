@@ -1,0 +1,4 @@
+# Lore files and SKILL.md must use LF line endings: the skill validator rejects CR.
+* text=auto eol=lf
+*.zip binary
+*.png binary
