@@ -4,6 +4,7 @@
 //   _site/index.html                 landing page with the URL to paste into the app
 //   _site/skills/<name>/...          every skill, byte-for-byte
 //   _site/downloads/<name>-local.zip copy of a skill renamed <name>-local, for testing "Import local skill"
+//   _site/spec/<version>/            SPEC.md and the JSON Schemas, so schema $id URLs resolve
 //
 // Usage: node tools/build-site.mjs [outDir]
 
@@ -15,6 +16,7 @@ import { validateSkillMd, validateSkillsRoot } from './validate-skills.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SKILLS_DIR = join(ROOT, 'skills');
+const SPEC_DIR = join(ROOT, 'spec');
 // Skills that get a renamed copy for the local-import test. The app refuses two skills with the
 // same name, so the copy must be called differently from the one loaded by URL.
 const LOCAL_IMPORT_VARIANTS = ['kin-spike'];
@@ -60,7 +62,13 @@ export function buildLocalVariantZip(skillDir, name) {
   return { fileName: `${localName}.zip`, zip: createZip(entries) };
 }
 
-function landingPage(skills, downloads) {
+/** Spec version, from the version constant in common.schema.json. */
+export function specVersion() {
+  const common = JSON.parse(readFileSync(join(SPEC_DIR, 'schemas', 'common.schema.json'), 'utf8'));
+  return common.$defs.version.const;
+}
+
+function landingPage(skills, downloads, version) {
   const items = skills
     .map(
       (s) => `    <li>
@@ -109,6 +117,9 @@ They run on your phone and never send your data anywhere.</p>
 ${items}
 </ul>
 ${downloads.length ? `<h2>Downloads</h2>\n<ul>\n${dl}\n</ul>` : ''}
+<h2>Lore spec</h2>
+<p><a href="spec/${version}/SPEC.md">Lore ${version} specification</a> and its
+<a href="https://github.com/QuantumBBoy/lore/tree/main/spec/schemas">JSON Schemas</a>.</p>
 <script>
   for (const el of document.querySelectorAll('[data-path]')) {
     el.textContent = new URL(el.dataset.path, location.href).href;
@@ -148,14 +159,20 @@ export function buildSite(outDir = join(ROOT, '_site')) {
     downloads.push(fileName);
   }
 
+  const version = specVersion();
+  const specOut = join(outDir, 'spec', version);
+  mkdirSync(specOut, { recursive: true });
+  cpSync(join(SPEC_DIR, 'SPEC.md'), join(specOut, 'SPEC.md'));
+  for (const f of readdirSync(join(SPEC_DIR, 'schemas'))) cpSync(join(SPEC_DIR, 'schemas', f), join(specOut, f));
+
   const skills = results.map((r) => r.skill).sort((a, b) => a.name.localeCompare(b.name));
-  writeFileSync(join(outDir, 'index.html'), landingPage(skills, downloads));
-  return { outDir, skills: skills.map((s) => s.name), downloads };
+  writeFileSync(join(outDir, 'index.html'), landingPage(skills, downloads, version));
+  return { outDir, skills: skills.map((s) => s.name), downloads, specVersion: version };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const out = process.argv[2] ? join(process.cwd(), process.argv[2]) : undefined;
-  const { outDir, skills, downloads } = buildSite(out);
+  const { outDir, skills, downloads, specVersion: version } = buildSite(out);
   const size = listFiles(outDir).reduce((n, f) => n + statSync(f).size, 0);
-  console.log(`Built ${relative(process.cwd(), outDir) || '.'}: skills [${skills.join(', ')}], downloads [${downloads.join(', ')}], ${size} bytes.`);
+  console.log(`Built ${relative(process.cwd(), outDir) || '.'}: skills [${skills.join(', ')}], downloads [${downloads.join(', ')}], spec ${version}, ${size} bytes.`);
 }

@@ -161,7 +161,7 @@ describe('kin-spike runner', () => {
 });
 
 describe('Pages site', () => {
-  test('the landing page shows the absolute skill URL and the local-import zip', async () => {
+  test('the landing page shows the skill URL; the zip, SKILL.md and spec are served', async () => {
     const context = await browser.newContext();
     const page = await context.newPage();
     const errors = [];
@@ -172,6 +172,14 @@ describe('Pages site', () => {
     assert.equal(zip.status(), 200);
     const skillMd = await page.request.get(server.url('skills/kin-spike/SKILL.md'));
     assert.match(await skillMd.text(), /^---\nname: kin-spike\n/);
+    // Schema $id URLs resolve on the published site.
+    for (const name of ['common', 'me', 'person', 'index', 'area']) {
+      const res = await page.request.get(server.url(`spec/0.1/${name}.schema.json`));
+      assert.equal(res.status(), 200, `${name}.schema.json`);
+      const id = new URL((await res.json()).$id);
+      assert.equal(id.pathname, `/lore/spec/0.1/${name}.schema.json`);
+    }
+    assert.equal((await page.request.get(server.url('spec/0.1/SPEC.md'))).status(), 200);
     assert.deepEqual(errors, []);
     await context.close();
   });
