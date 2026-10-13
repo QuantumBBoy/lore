@@ -41,8 +41,8 @@ overwriting and before deleting: answer "sí" when it asks. Start a new chat at 
 10. `Marta ya me devolvió el libro`
 11. `Luis es la pareja de Marta` → asks whether to add Luis → `sí`
 12. `Quiero hablar con Marta cada dos semanas`
-13. `¿Con quién hace tiempo que no hablo?` → *Sin contacto registrado: Marta* (nothing has
-    recorded a contact yet; a note such as "hoy he comido con Marta" would).
+13. `¿Con quién hace tiempo que no hablo?` → nobody: step 1 said "ayer", and anything you date in
+    the past counts as the last time you were in touch.
 14. `La última vez que hablé con Marta fue el 1 de septiembre`
 15. `¿Con quién hace tiempo que no hablo?` → now Marta is overdue.
 16. *(new chat)* `¿Qué cumpleaños tengo en los próximos 12 meses?` → Marta, 12 April.

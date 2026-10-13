@@ -2997,7 +2997,10 @@ function capture(ctx, input) {
 
   const checkbox = ['follow-ups', 'promises', 'plan-ideas'].includes(section) ? false : null;
   ctx.folder.addEntry(who.slug, section, { checked: checkbox, date, text, attrs });
-  if (kind === 'note' && date.length === 10 && date <= ctx.today) ctx.folder.recordContact(who.slug, date);
+  // A day the user gives for something that already happened ("ayer Marta me dijo...") is a day
+  // they were in touch. A note without a day means today; other kinds without one say nothing.
+  const contact = kind === 'note' ? date : resolved;
+  if (contact && contact.length === 10 && contact <= ctx.today) ctx.folder.recordContact(who.slug, contact);
   return reply(`${prefix}${t.saved(who.name, t.section(section), text)}${sensitive ? t.markedSensitive : ''}${extra}`);
 }
 

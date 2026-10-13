@@ -61,7 +61,12 @@ describe('capture', () => {
     const r = say({ action: 'capture', person: 'Marta', kind: 'gift_idea', text: 'Quiere aprender cerámica', date: 'ayer', lang: 'es' });
     assert.equal(r, 'Guardado en Marta Ruiz (ideas de regalo): Quiere aprender cerámica');
     const after = fileText('people/marta-ruiz.md');
-    assert.equal(after, before.replace('- 2026-06-02: Vinyl of "Chet Baker Sings"\n', '- 2026-06-02: Vinyl of "Chet Baker Sings"\n- 2026-10-13: Quiere aprender cerámica\n'));
+    // The idea is added, and "ayer" counts as the last contact. Nothing else changes.
+    const expected = before
+      .replace('last_contact: 2026-09-28\n', 'last_contact: 2026-10-12\n')
+      .replace('- 2026-06-02: Vinyl of "Chet Baker Sings"\n', '- 2026-06-02: Vinyl of "Chet Baker Sings"\n- 2026-10-13: Quiere aprender cerámica\n');
+    assert.notEqual(expected, before);
+    assert.equal(after, expected);
   });
 
   test('replies in English when asked to', () => {
@@ -97,6 +102,20 @@ describe('capture', () => {
     say({ action: 'capture', person: 'Noor', kind: 'note', text: 'Videollamada', date: 'ayer', lang: 'es' });
     assert.equal(folder().person('noor-haddad').get('last_contact'), '2026-10-12');
     assert.match(fileText('people/noor-haddad.md'), /## Notes log\n\n- 2026-10-12: Videollamada\n- 2026-02-02:/);
+  });
+
+  test('anything the user dates in the past records the contact; undated or future things do not', () => {
+    const lastContact = () => folder().person('luis-ortega').get('last_contact');
+    assert.equal(lastContact(), '2026-08-10');
+    say({ action: 'capture', person: 'Luis', kind: 'preference', text: 'Le encanta el jazz', lang: 'es' });
+    say({ action: 'capture', person: 'Luis', kind: 'follow_up', text: 'Preguntarle por la mudanza', date: 'el viernes', lang: 'es' });
+    say({ action: 'capture', person: 'Luis', kind: 'date', text: 'Aniversario de boda', date: '2 de octubre', lang: 'es' });
+    assert.equal(lastContact(), '2026-08-10');
+    say({ action: 'capture', person: 'Luis', kind: 'gift_idea', text: 'Quiere aprender cerámica', date: 'hace 3 días', lang: 'es' });
+    assert.equal(lastContact(), '2026-10-10');
+    // Never moves back
+    say({ action: 'capture', person: 'Luis', kind: 'promise', text: 'Le presté mi taladro', date: 'la semana pasada', lang: 'es' });
+    assert.equal(lastContact(), '2026-10-10');
   });
 
   test('preferences go to sizes, diet or tastes', () => {

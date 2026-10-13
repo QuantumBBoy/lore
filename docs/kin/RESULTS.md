@@ -34,6 +34,8 @@ Gemma 4, on 2026-10-13. The model size (E2B or E4B) was not recorded.
   that every state fits at iPhone widths without scrolling.
 - `upcoming` accepts "este mes", "next 3 months", "el año que viene" and similar.
 - `SKILL.md` is shorter, and a test keeps it in step with Kin's actions.
+- Anything the user dates in the past ("ayer Marta me dijo...") now counts as the last contact,
+  not only notes. Undated captures, birthdays and future dates do not.
 
 ## Still open
 
