@@ -23,6 +23,7 @@ function call(data, { now = NOW, raw = false } = {}) {
 const say = (data, opts) => call(data, opts).result;
 const fileText = (path) => storage.getItem(`lore:v1:file:${path}`);
 const folder = () => loadFolder(storage).folder;
+const keys = () => [...Array(storage.length).keys()].map((i) => storage.key(i)).sort();
 
 function withExample() {
   storage = new MemoryStorage();
@@ -36,13 +37,14 @@ describe('an empty phone', () => {
 
   test('read actions say there is nothing yet', () => {
     assert.equal(say({ action: 'upcoming', lang: 'en' }), 'Kin has no data yet. Tell me something about someone to start.');
-    assert.equal(storage.length, 0);
+    // Only the record of the last call (for feedback), no Lore files.
+    assert.deepEqual(keys(), ['lore:v1:last']);
   });
 
   test('asks before creating the first person, then creates the folder', () => {
     const ask = say({ action: 'capture', person: 'Marta', kind: 'gift_idea', text: 'Wants to learn pottery', lang: 'en' });
     assert.equal(ask, 'I don\'t know anyone called "Marta". Should I add "Marta" as a new person?');
-    assert.equal(storage.length, 0, 'nothing written before confirmation');
+    assert.deepEqual(keys(), ['lore:v1:last'], 'nothing written before confirmation');
     const ok = say({ action: 'capture', person: 'marta ruiz', kind: 'gift_idea', text: 'Wants to learn pottery', lang: 'en', confirm: true });
     assert.equal(ok, 'Added Marta Ruiz. Saved for Marta Ruiz (gift ideas): Wants to learn pottery');
     assert.match(fileText('me.md'), /^---\nlore: "0\.2"\nname: Me\nlanguage: en\n/);
@@ -357,7 +359,7 @@ describe('the app contract', () => {
   beforeEach(withExample);
 
   test('unknown actions and broken JSON are explained', () => {
-    assert.equal(say({ action: 'fly', lang: 'en' }), 'Unknown action "fly". Use one of: capture, person, brief, gift_context, upcoming, overdue, done, update, link, delete, backup.');
+    assert.equal(say({ action: 'fly', lang: 'en' }), 'Unknown action "fly". Use one of: capture, person, brief, gift_context, upcoming, overdue, done, update, link, delete, backup, digest, remind, feedback.');
     const broken = call('{"action": "capture", ', { raw: true });
     assert.equal(broken.status, 'failed');
     assert.match(broken.error, /must be a JSON object/);

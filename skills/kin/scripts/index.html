@@ -2226,81 +2226,6 @@ function checkBody(file, path, add) {
 return { VERSION, GENERATOR, LoreError, INVERSE_LINK, AREA_FILES, LoreFolder };
 })();
 
-// lore-core/src/match.mjs
-__m["lore-core/src/match.mjs"] = (() => {
-// Recognise the person the owner means (spec 15.5): exact names and aliases first, then single
-// names ("Marta"), prefixes ("Mart") and small typos ("Mrta"). When two people fit about equally
-// well the result is "ambiguous", and the caller must ask the owner before writing anything.
-
-const { normalizeText } = __m["lore-core/src/text.mjs"];
-
-const MATCH = 0.6; // below this, nobody matches
-const TIE = 0.05; // candidates this close to the best are a tie
-
-/** Optimal string alignment distance (Levenshtein with adjacent transpositions). */
-function editDistance(a, b) {
-  const m = a.length;
-  const n = b.length;
-  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...new Array(n).fill(0)]);
-  for (let j = 1; j <= n; j++) d[0][j] = j;
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
-      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
-    }
-  }
-  return d[m][n];
-}
-
-const similarity = (a, b) => 1 - editDistance(a, b) / Math.max(a.length, b.length, 1);
-
-/** How well `query` names someone called `name` (both normalised), 0 to 1. */
-function scoreName(q, name) {
-  if (!q || !name) return 0;
-  if (q === name) return 1;
-  const qt = q.split(' ');
-  const nt = name.split(' ');
-  if (qt.every((t) => nt.includes(t))) return 0.9; // "marta" in "marta ruiz", "ruiz marta"
-  if (q.length >= 3 && nt.some((t) => t.startsWith(q))) return 0.75; // "mart"
-  let best = similarity(q, name);
-  if (qt.length === 1) for (const t of nt) best = Math.max(best, similarity(q, t));
-  return best >= 0.75 ? 0.5 + 0.4 * best - 0.2 : 0; // 0.6 (at 0.75) to 0.7
-}
-
-/**
- * Find the person meant by `query`.
- * @returns {{status: 'match', slug, name, score} | {status: 'ambiguous', candidates: {slug, name, score}[]}
- *   | {status: 'none', suggestions: {slug, name, score}[]}}
- */
-function matchPerson(folder, query) {
-  const q = normalizeText(query);
-  const scored = [];
-  for (const slug of folder.slugs()) {
-    let data;
-    try {
-      data = folder.person(slug).data;
-    } catch {
-      continue;
-    }
-    const names = [data.name, ...(Array.isArray(data.aliases) ? data.aliases : [])].filter((x) => typeof x === 'string');
-    let score = Math.max(0, ...names.map((n) => scoreName(q, normalizeText(n))));
-    if (q === slug.replace(/-/g, ' ')) score = 1;
-    if (typeof data.relationship === 'string' && normalizeText(data.relationship) === q) score = Math.max(score, 0.85);
-    scored.push({ slug, name: typeof data.name === 'string' ? data.name : slug, score: Math.round(score * 1000) / 1000 });
-  }
-  scored.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
-  const best = scored[0];
-  if (!best || best.score < MATCH) {
-    return { status: 'none', query, suggestions: scored.filter((s) => s.score >= 0.4).slice(0, 3) };
-  }
-  const tied = scored.filter((s) => s.score >= best.score - TIE && s.score >= MATCH);
-  if (tied.length > 1) return { status: 'ambiguous', query, candidates: tied };
-  return { status: 'match', query, slug: best.slug, name: best.name, score: best.score };
-}
-return { editDistance, matchPerson };
-})();
-
 // lore-core/src/i18n.mjs
 __m["lore-core/src/i18n.mjs"] = (() => {
 // Short phrases for briefs and summaries. Kin answers in the user's language; these give the
@@ -2657,6 +2582,338 @@ function personSummary(folder, slug, { today = runtimeToday(), includeSensitive 
 return { upcoming, overdue, sameGift, giftHistory, findGiven, giftContext, brief, personSummary };
 })();
 
+// lore-core/src/match.mjs
+__m["lore-core/src/match.mjs"] = (() => {
+// Recognise the person the owner means (spec 15.5): exact names and aliases first, then single
+// names ("Marta"), prefixes ("Mart") and small typos ("Mrta"). When two people fit about equally
+// well the result is "ambiguous", and the caller must ask the owner before writing anything.
+
+const { normalizeText } = __m["lore-core/src/text.mjs"];
+
+const MATCH = 0.6; // below this, nobody matches
+const TIE = 0.05; // candidates this close to the best are a tie
+
+/** Optimal string alignment distance (Levenshtein with adjacent transpositions). */
+function editDistance(a, b) {
+  const m = a.length;
+  const n = b.length;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...new Array(n).fill(0)]);
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[m][n];
+}
+
+const similarity = (a, b) => 1 - editDistance(a, b) / Math.max(a.length, b.length, 1);
+
+/** How well `query` names someone called `name` (both normalised), 0 to 1. */
+function scoreName(q, name) {
+  if (!q || !name) return 0;
+  if (q === name) return 1;
+  const qt = q.split(' ');
+  const nt = name.split(' ');
+  if (qt.every((t) => nt.includes(t))) return 0.9; // "marta" in "marta ruiz", "ruiz marta"
+  if (q.length >= 3 && nt.some((t) => t.startsWith(q))) return 0.75; // "mart"
+  let best = similarity(q, name);
+  if (qt.length === 1) for (const t of nt) best = Math.max(best, similarity(q, t));
+  return best >= 0.75 ? 0.5 + 0.4 * best - 0.2 : 0; // 0.6 (at 0.75) to 0.7
+}
+
+/**
+ * Find the person meant by `query`.
+ * @returns {{status: 'match', slug, name, score} | {status: 'ambiguous', candidates: {slug, name, score}[]}
+ *   | {status: 'none', suggestions: {slug, name, score}[]}}
+ */
+function matchPerson(folder, query) {
+  const q = normalizeText(query);
+  const scored = [];
+  for (const slug of folder.slugs()) {
+    let data;
+    try {
+      data = folder.person(slug).data;
+    } catch {
+      continue;
+    }
+    const names = [data.name, ...(Array.isArray(data.aliases) ? data.aliases : [])].filter((x) => typeof x === 'string');
+    let score = Math.max(0, ...names.map((n) => scoreName(q, normalizeText(n))));
+    if (q === slug.replace(/-/g, ' ')) score = 1;
+    if (typeof data.relationship === 'string' && normalizeText(data.relationship) === q) score = Math.max(score, 0.85);
+    scored.push({ slug, name: typeof data.name === 'string' ? data.name : slug, score: Math.round(score * 1000) / 1000 });
+  }
+  scored.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  const best = scored[0];
+  if (!best || best.score < MATCH) {
+    return { status: 'none', query, suggestions: scored.filter((s) => s.score >= 0.4).slice(0, 3) };
+  }
+  const tied = scored.filter((s) => s.score >= best.score - TIE && s.score >= MATCH);
+  if (tied.length > 1) return { status: 'ambiguous', query, candidates: tied };
+  return { status: 'match', query, slug: best.slug, name: best.name, score: best.score };
+}
+return { editDistance, matchPerson };
+})();
+
+// kin/src/shared.mjs
+__m["kin/src/shared.mjs"] = (() => {
+// Helpers shared by Kin's actions: text normalising, showing dates, and finding the person the
+// owner means.
+
+const { formatShortDate, parsePersonDate } = __m["lore-core/src/dates.mjs"];
+const { matchPerson } = __m["lore-core/src/match.mjs"];
+const { normalizeText } = __m["lore-core/src/text.mjs"];
+
+const n = (s) => normalizeText(s ?? '');
+const has = (text, re) => re.test(` ${n(text)} `);
+
+// Words that make a note sensitive (spec 6.1): health, relationships, money, legal matters.
+const SENSITIVE = / (cancer\w*|tumou?r\w*|chemo\w*|quimio\w*|surgery|cirugia|operacion|operar\w*|operad\w*|quirofano|hospital\w*|ingresad\w*|enferm\w*|illness|biops\w*|radioterapia|ictus|stroke|infarto|heart attack|diagnos\w*|depres\w*|ansiedad|anxiety|therap\w*|terapia|psicolog\w*|psychiatr\w*|psiquiatr\w*|medication|medicacion|embarazad\w*|pregnan\w*|abort\w*|miscarriage|divorc\w*|separad\w*|breakup|ruptura|affair|infidel\w*|debt\w*|deuda\w*|unemployed|en paro|despid\w*|fired|laid off|lawsuit|demanda|juicio|arrest\w*|detenid\w*|police|policia|rehab|adiccion|addiction) /;
+
+/** Does this text look sensitive? Keyword detection: it misses things, so the owner can say so. */
+const looksSensitive = (text) => has(text, SENSITIVE);
+
+function cleanText(s) {
+  return String(s ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function capitalize(name) {
+  return name === name.toLowerCase() ? name.replace(/(^|[\s-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()) : name;
+}
+
+/** "12 abr" / "Apr 12", with the year ("12 abr 1990" / "Apr 12, 1990") when it is not this year. */
+function showDate(iso, ctx) {
+  const p = parsePersonDate(iso);
+  if (!p) return iso;
+  if (!p.year || String(p.year) === ctx.today.slice(0, 4)) return formatShortDate(iso, ctx.lang);
+  try {
+    return new Intl.DateTimeFormat(ctx.lang, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(p.year, p.month - 1, p.day)));
+  } catch {
+    return iso;
+  }
+}
+
+const reply = (text, extra = {}) => ({ text, ...extra });
+
+/**
+ * Find who the owner means; create them only after the owner confirmed. Before writing, a match
+ * that is only a near spelling ("Marte" for Marta) is a question, not a match.
+ */
+const FILLER = /^(?:a|al|la|el|de|del|para|con|mi|to|for|with|my|the|about|sobre)\s+|(?:'s|’s)$/giu;
+
+function resolvePerson(ctx, query, { create = false, write = create } = {}) {
+  let q = cleanText(query);
+  if (!q) return { reply: ctx.t.needPerson };
+  let m = matchPerson(ctx.folder, q);
+  // "a Marta", "de Marta", "Marta's": try again without the filler words.
+  const bare = cleanText(q.replace(FILLER, '').replace(FILLER, ''));
+  if (m.status === 'none' && bare && bare !== q) {
+    const retry = matchPerson(ctx.folder, bare);
+    if (retry.status !== 'none') [q, m] = [bare, retry];
+  }
+  if (m.status === 'match' && (m.score >= 0.75 || !write)) return { slug: m.slug, name: m.name };
+  if (m.status === 'match') m.suggestions = [{ name: m.name }];
+  if (m.status === 'ambiguous') return { reply: ctx.t.ambiguous(q, m.candidates.map((c) => c.name)) };
+  if (create && ctx.confirm) {
+    const name = capitalize(q);
+    const slug = ctx.folder.createPerson({ name });
+    return { slug, name, created: true };
+  }
+  return { reply: ctx.t.notFound(q, m.suggestions.map((s) => s.name)) };
+}
+
+const opts = (ctx) => ({ today: ctx.today, includeSensitive: ctx.includeSensitive });
+return { n, has, looksSensitive, cleanText, capitalize, showDate, reply, FILLER, resolvePerson, opts };
+})();
+
+// kin/src/version.mjs
+__m["kin/src/version.mjs"] = (() => {
+// Kin's version, shown in exported files and recorded with each logged mistake.
+const KIN_VERSION = '0.2.0';
+return { KIN_VERSION };
+})();
+
+// kin/src/feedback.mjs
+__m["kin/src/feedback.mjs"] = (() => {
+// Kin's mistake log, for evals. Kin remembers its last call (what the model sent and what Kin
+// answered). When the owner says it was wrong, the feedback action stores that call with the
+// owner's correction. The backup panel exports the log as JSON Lines (evals/cases.jsonl), with
+// people's names replaced by stable placeholders (person_1, person_2…) so it can be published.
+// Everything stays in this phone's storage, under lore: keys, until the owner shares it.
+
+const { foldAccents } = __m["lore-core/src/text.mjs"];
+const { cleanText, looksSensitive, reply } = __m["kin/src/shared.mjs"];
+const { KIN_VERSION } = __m["kin/src/version.mjs"];
+
+const LAST = 'lore:v1:last';
+const CASES = 'lore:v1:feedback';
+const NAMES = 'lore:v1:evalnames';
+const MAX_CASES = 500;
+
+const read = (storage, key, fallback) => {
+  try {
+    return JSON.parse(storage.getItem(key) ?? 'null') ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+const write = (storage, key, value) => {
+  try {
+    storage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false; // a full storage must not break the answer
+  }
+};
+
+/** Remember a call: what the model sent and what Kin answered. */
+function recordCall(storage, call) {
+  write(storage, LAST, call);
+}
+
+const readLastCall = (storage) => read(storage, LAST, null);
+const readCases = (storage) => read(storage, CASES, []);
+const caseCount = (storage) => readCases(storage).length;
+
+/** feedback: the owner says Kin's last answer was wrong, and how. */
+function feedback(ctx, input) {
+  const { t } = ctx;
+  const correction = cleanText(input.text ?? input.correction ?? input.feedback);
+  if (!correction) return reply(t.needCorrection);
+  const last = readLastCall(ctx.storage);
+  if (!last) return reply(t.feedbackNone);
+  const cases = readCases(ctx.storage);
+  const minutes = Math.max(0, Math.round((ctx.now.getTime() - Date.parse(last.ts)) / 60000));
+  cases.push({
+    id: `${ctx.today}-${String(cases.length + 1).padStart(3, '0')}`,
+    ts: ctx.now.toISOString(),
+    call_ts: last.ts,
+    today: last.today,
+    time: last.time,
+    lang: last.lang,
+    kin: KIN_VERSION,
+    spec: ctx.folder.version,
+    action: last.action,
+    params: last.params,
+    result: last.result,
+    error: last.error ?? false,
+    correction,
+    minutes_since_call: minutes,
+    fault: 'unknown',
+    expected: null,
+  });
+  write(ctx.storage, CASES, cases.slice(-MAX_CASES));
+  return reply(t.feedbackSaved(cases.length, last.action) + (minutes > 30 ? t.feedbackStale(minutes) : ''));
+}
+
+// ------------------------------------------------------------------------------------- export
+
+const ACCENTS = { a: 'aáàäâã', e: 'eéèëê', i: 'iíìïî', o: 'oóòöôõ', u: 'uúùüû', n: 'nñ', c: 'cç' };
+const escape = (ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** A whole-word, case- and accent-insensitive pattern for a name. */
+function namePattern(name) {
+  const body = [...foldAccents(name).toLowerCase()].map((ch) => (ACCENTS[ch] ? `[${ACCENTS[ch]}]` : escape(ch))).join('');
+  return new RegExp(`(?<![\\p{L}\\p{N}_-])${body}(?![\\p{L}\\p{N}_-])`, 'giu');
+}
+
+const key = (s) => foldAccents(String(s)).toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * Placeholders for everyone in the folder, stable across exports: the same person is always
+ * person_N on this phone. The owner is "owner".
+ */
+function placeholders(storage, folder, extraNames) {
+  const map = read(storage, NAMES, { slugs: {}, words: {}, next: 1 });
+  const variants = [];
+  const add = (text, holder) => {
+    if (typeof text === 'string' && text.trim().length >= 2) variants.push([text.trim(), holder]);
+  };
+  for (const slug of folder.slugs()) {
+    let data;
+    try {
+      data = folder.person(slug).data;
+    } catch {
+      continue;
+    }
+    map.slugs[slug] ??= `person_${map.next++}`;
+    const holder = map.slugs[slug];
+    add(slug, holder);
+    add(data.name, holder);
+    for (const alias of Array.isArray(data.aliases) ? data.aliases : []) add(alias, holder);
+    const first = typeof data.name === 'string' ? data.name.split(/\s+/)[0] : null;
+    if (first && first.length >= 3) add(first, holder);
+  }
+  let owner = null;
+  try {
+    owner = folder.me.data;
+  } catch {
+    // no owner file: nothing to hide for them
+  }
+  if (owner) {
+    add(owner.name, 'owner');
+    for (const alias of Array.isArray(owner.aliases) ? owner.aliases : []) add(alias, 'owner');
+  }
+  // Names the model used that match nobody in the folder still get a placeholder.
+  for (const name of extraNames) {
+    const k = key(name);
+    if (!k || variants.some(([v]) => key(v) === k)) continue;
+    map.words[k] ??= `person_${map.next++}`;
+    add(name, map.words[k]);
+  }
+  write(storage, NAMES, map);
+  variants.sort((a, b) => b[0].length - a[0].length);
+  return variants.map(([name, holder]) => [namePattern(name), holder]);
+}
+
+const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+const NUMBERS = /\+?\d[\d\s().-]{6,}\d/g;
+
+function scrub(text, patterns) {
+  let out = String(text);
+  for (const [re, holder] of patterns) out = out.replace(re, holder);
+  out = out.replace(EMAIL, '[email]');
+  // Long digit runs are phone numbers; dates (8 digits at most) stay.
+  return out.replace(NUMBERS, (m) => (m.replace(/\D/g, '').length >= 9 ? '[phone]' : m));
+}
+
+function scrubDeep(value, patterns) {
+  if (typeof value === 'string') return scrub(value, patterns);
+  if (Array.isArray(value)) return value.map((v) => scrubDeep(v, patterns));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrubDeep(v, patterns)]));
+  return value;
+}
+
+const PERSON_PARAMS = ['person', 'name', 'who', 'other'];
+
+/**
+ * The log as JSON Lines, one case per line, ready to commit as evals/cases.jsonl. In what the
+ * model sent, what Kin answered and the correction, names become placeholders and e-mail
+ * addresses and phone numbers are removed. A call that asked for sensitive data, or whose text
+ * looks sensitive, keeps none of the three.
+ * @returns {{text: string, count: number}}
+ */
+function exportCases(storage, folder) {
+  const cases = readCases(storage);
+  const extra = cases.flatMap((c) => PERSON_PARAMS.map((p) => c.params?.[p]).filter((v) => typeof v === 'string'));
+  const patterns = placeholders(storage, folder, extra);
+  const lines = cases.map((c) => {
+    const sensitive = c.params?.sensitive === true || String(c.params?.sensitive) === 'true' || looksSensitive(c.params?.text ?? '') || looksSensitive(c.correction ?? '');
+    const out = { ...c, params: scrubDeep(c.params, patterns), result: scrub(c.result ?? '', patterns), correction: scrub(c.correction ?? '', patterns), sensitive };
+    if (sensitive) {
+      if (out.params && typeof out.params.text === 'string') out.params.text = '[sensitive]';
+      out.result = '[sensitive]';
+      out.correction = '[sensitive]';
+    }
+    return JSON.stringify(out);
+  });
+  return { text: lines.length ? `${lines.join('\n')}\n` : '', count: lines.length };
+}
+return { MAX_CASES, recordCall, readLastCall, readCases, caseCount, feedback, exportCases };
+})();
+
 // kin/src/when.mjs
 __m["kin/src/when.mjs"] = (() => {
 // Turn the user's words for a date ("ayer", "last Friday", "12 de abril", "2026-03-14") into a
@@ -2840,6 +3097,896 @@ function resolvePeriod(input, today) {
 return { resolveWhen, resolvePeriod };
 })();
 
+// kin/src/settings.mjs
+__m["kin/src/settings.mjs"] = (() => {
+// Kin's settings, kept in the Lore folder under the kin namespace (spec section 12): lead times by
+// relationship group (me.md kin.lead_days, or kin.lead_days in one person's file), the time of
+// day for reminders (kin.remind_at) and the summary the owner asked for (kin.digest). Also the
+// parsers that turn the owner's words ("dos semanas", "a las 9", "cada lunes") into those values.
+
+const { foldAccents } = __m["lore-core/src/text.mjs"];
+const { resolvePeriod } = __m["kin/src/when.mjs"];
+
+const GROUPS = ['partner', 'family', 'friend', 'colleague', 'other'];
+const DEFAULT_LEAD_DAYS = { partner: 14, family: 7, friend: 3, colleague: 1, other: 3 };
+const DEFAULT_TIME = '09:00';
+const MAX_LEAD_DAYS = 365;
+
+const words = (s) => ` ${foldAccents(String(s ?? '')).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+
+// Relationship words, English and Spanish, by group. Checked in this order, so "best friend" is a
+// friend and "brother-in-law" is family.
+const RELATIONSHIP_GROUPS = [
+  ['partner', /\b(partner|pareja|wife|husband|esposa|esposo|marido|mujer|girlfriend|boyfriend|novia|novio|spouse|conyuge|fiance|fiancee|prometida|prometido)\b/],
+  ['family', /\b(family|familia|familiar|mother|father|mom|mum|dad|madre|padre|mama|papa|sister|brother|hermana|hermano|sibling|parent|son|daughter|hijo|hija|child|kid|grandmother|grandfather|grandma|grandpa|granny|abuela|abuelo|aunt|uncle|tia|tio|cousin|prima|primo|niece|nephew|sobrina|sobrino|in law|suegra|suegro|cunada|cunado|nuera|yerno|stepmother|stepfather|madrastra|padrastro|godmother|godfather|madrina|padrino)\b/],
+  ['colleague', /\b(colleague|coworker|co worker|workmate|compa(n|ñ)er[oa] de trabajo|boss|jefe|jefa|manager|client|cliente|work|trabajo|oficina|office)\b/],
+  ['friend', /\b(friend|friends|amigo|amiga|amigos|amigas|colega|colegas|mate|buddy|compi|vecino|vecina|neighbou?r)\b/],
+];
+
+/** The group of a relationship ("hermana" → family); "other" when it is unknown or missing. */
+function groupOf(relationship) {
+  const w = words(relationship);
+  for (const [group, re] of RELATIONSHIP_GROUPS) if (re.test(w)) return group;
+  return 'other';
+}
+
+const GROUP_WORDS = [
+  ['everyone', /\b(everyone|everybody|all|todos|todas|todo el mundo|cualquiera|everything|todo)\b/],
+  ['partner', /\b(partner|pareja|my wife|my husband|esposa|esposo|marido|novia|novio)\b/],
+  ['family', /\b(family|familia|familiares|relatives|parientes)\b/],
+  ['friend', /\b(friends?|amig[oa]s?)\b/],
+  ['colleague', /\b(colleagues?|coworkers?|compa(n|ñ)er[oa]s?|trabajo|work)\b/],
+  ['other', /\b(others?|otros|otras|el resto|the rest|demas)\b/],
+];
+
+/**
+ * A group the owner names instead of a person: "family", "mis amigos", "everyone".
+ * @returns {string|null} a group, 'everyone', or null when the words are not a group
+ */
+function groupWord(raw) {
+  const w = words(raw);
+  if (w.trim() === '') return null;
+  for (const [group, re] of GROUP_WORDS) {
+    if (re.test(w)) {
+      // "familia de Marta" is a person's family, not the owner's group.
+      if (/\b(de|of)\b \w/.test(w.slice(w.search(re)))) return null;
+      return group;
+    }
+  }
+  return null;
+}
+
+const asDays = (v) => (Number.isInteger(v) && v >= 0 && v <= MAX_LEAD_DAYS ? v : null);
+
+/** Lead days for every group: me.md's kin.lead_days over the defaults. */
+function leadDays(folder) {
+  const set = folder.setting('kin.lead_days');
+  const out = { ...DEFAULT_LEAD_DAYS };
+  if (set && typeof set === 'object' && !Array.isArray(set)) {
+    for (const g of GROUPS) if (asDays(set[g]) !== null) out[g] = set[g];
+  }
+  return out;
+}
+
+/** Lead days for one person: their own kin.lead_days, else their group's. */
+function leadFor(folder, slug) {
+  let data = {};
+  try {
+    data = folder.person(slug)?.data ?? {};
+  } catch {
+    // unreadable file: use the defaults
+  }
+  if (asDays(data['kin.lead_days']) !== null) return data['kin.lead_days'];
+  return leadDays(folder)[groupOf(data.relationship)];
+}
+
+/**
+ * How long before ("dos semanas", "3 days", "el mismo día") in days.
+ * @returns {number|null}
+ */
+function parseLead(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  if (typeof raw === 'number') return asDays(Math.round(raw));
+  const w = words(raw);
+  if (/\b(same day|on the day|that day|the day of|mismo dia|ese dia|el dia|el propio dia)\b/.test(w)) return 0;
+  // A fixed reference day, so "un mes" is always 30 days and "un año" 365.
+  const days = resolvePeriod(w.replace(/\b(before|antes|ahead|beforehand|de antelacion|in advance|con)\b/g, ' ').trim(), '2001-04-01');
+  return days === null ? null : asDays(days);
+}
+
+/**
+ * A time of day from the owner's words: "9", "9:30", "a las 9", "9 pm", "21h", "9 de la noche".
+ * @returns {string|null} "HH:MM"
+ */
+function parseClock(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const w = words(String(raw).replace(/(\d)[.:h](\d{2})/g, '$1 $2'));
+  const m = /\b(\d{1,2})(?: (\d{2}))?(?: ?(am|pm|a m|p m|h|horas|de la manana|de la tarde|de la noche|in the morning|in the evening|at night))?\b/.exec(w);
+  if (!m) {
+    if (/\b(noon|mediodia)\b/.test(w)) return '12:00';
+    if (/\b(midnight|medianoche)\b/.test(w)) return '00:00';
+    return null;
+  }
+  let hour = Number(m[1]);
+  const minute = m[2] ? Number(m[2]) : 0;
+  const suffix = m[3] ?? '';
+  if (/^(pm|p m|de la tarde|de la noche|in the evening|at night)$/.test(suffix) && hour < 12) hour += 12;
+  if (/^(am|a m)$/.test(suffix) && hour === 12) hour = 0;
+  if (hour > 23 || minute > 59) return null;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+const clockParts = (hhmm) => ({ hour: Number(hhmm.slice(0, 2)), minute: Number(hhmm.slice(3, 5)) });
+
+/** The time of day for reminders (kin.remind_at), "HH:MM". */
+function remindAt(folder) {
+  return parseClock(folder.setting('kin.remind_at')) ?? DEFAULT_TIME;
+}
+
+const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const WEEKDAY_WORDS = [
+  [/\b(sunday|sundays|domingo|domingos)\b/, 'sunday'],
+  [/\b(monday|mondays|lunes)\b/, 'monday'],
+  [/\b(tuesday|tuesdays|martes)\b/, 'tuesday'],
+  [/\b(wednesday|wednesdays|miercoles)\b/, 'wednesday'],
+  [/\b(thursday|thursdays|jueves)\b/, 'thursday'],
+  [/\b(friday|fridays|viernes)\b/, 'friday'],
+  [/\b(saturday|saturdays|sabado|sabados)\b/, 'saturday'],
+];
+
+/**
+ * How often the owner wants the summary: "cada lunes" → monday, "every day" → day,
+ * "weekly" → monday, "nunca" → off.
+ * @returns {string|null} 'day', a weekday, 'off', or null when not understood
+ */
+function parseEvery(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const w = words(raw);
+  if (/\b(off|never|nunca|stop|para|parar|no more|ya no|cancel|cancelar|quitar|none|ninguno)\b/.test(w)) return 'off';
+  for (const [re, day] of WEEKDAY_WORDS) if (re.test(w)) return day;
+  if (/\b(day|days|daily|dia|dias|diario|diaria|cada dia|todos los dias|every morning|cada manana|everyday)\b/.test(w)) return 'day';
+  if (/\b(week|weekly|semana|semanal|semanalmente|cada semana)\b/.test(w)) return 'monday';
+  return null;
+}
+
+/** The summary the owner set up (me.md kin.digest), or null. */
+function digestSetting(folder) {
+  const d = folder.setting('kin.digest');
+  if (!d || typeof d !== 'object') return null;
+  const every = d.every === 'day' || WEEKDAYS.includes(d.every) ? d.every : null;
+  if (!every) return null;
+  return { every, at: parseClock(d.at) ?? DEFAULT_TIME };
+}
+return { GROUPS, DEFAULT_LEAD_DAYS, DEFAULT_TIME, MAX_LEAD_DAYS, groupOf, groupWord, leadDays, leadFor, parseLead, parseClock, clockParts, remindAt, WEEKDAYS, parseEvery, digestSetting };
+})();
+
+// kin/src/calendar.mjs
+__m["kin/src/calendar.mjs"] = (() => {
+// Calendar export (spec 15.7): every birthday and date as an all-day event that repeats yearly,
+// in an iCalendar file (RFC 5545) the owner adds to their calendar through the share sheet. Each
+// event has a UID that never changes, and an alarm at the owner's lead time (spec 15.6). What was
+// exported is recorded in the Lore folder (kin.calendar_birthday, and kin.calendar on items of
+// dates), so the next export only carries what is new or changed.
+
+const { addDays, nextOccurrence, parsePersonDate } = __m["lore-core/src/dates.mjs"];
+const { fieldLevel, isVisible, itemLevel } = __m["lore-core/src/sensitivity.mjs"];
+const { slugify } = __m["lore-core/src/text.mjs"];
+const { clockParts, leadFor, remindAt } = __m["kin/src/settings.mjs"];
+
+const hidden = (level) => !isVisible(level, { includeSensitive: false });
+
+/**
+ * Dates that can go to a calendar. Sensitive dates, and the dates of people whose name is
+ * sensitive, never do (spec 6.4 rule 4).
+ * @returns {{dates: {slug, name, key, label, kind, date, recurring, uid, exported, changed, index}[], withheld: number}}
+ *   exported: this value was exported before; changed: an older value was
+ */
+function calendarDates(folder, { today }) {
+  const dates = [];
+  let withheld = 0;
+  for (const slug of folder.slugs()) {
+    let data;
+    try {
+      data = folder.person(slug).data;
+    } catch {
+      continue;
+    }
+    const path = `people/${slug}.md`;
+    const nameOk = typeof data.name === 'string' && !hidden(fieldLevel(data, 'name', path));
+    const consider = ({ key, date, label, kind, recurring, level, marker, index = null }) => {
+      const p = parsePersonDate(date);
+      if (!p) return;
+      if (!recurring && (p.year === null || date < today)) return; // a one-off date that has passed
+      if (!nameOk || hidden(level)) {
+        withheld++;
+        return;
+      }
+      dates.push({
+        slug,
+        name: data.name,
+        key,
+        label,
+        kind,
+        date,
+        recurring,
+        uid: `${slug}.${key}@kin.lore`,
+        exported: marker === date,
+        changed: typeof marker === 'string' && marker !== date,
+        index,
+      });
+    };
+    if (typeof data.birthday === 'string') {
+      consider({ key: 'birthday', date: data.birthday, label: null, kind: 'birthday', recurring: true, level: fieldLevel(data, 'birthday', path), marker: data['kin.calendar_birthday'] });
+    }
+    const items = Array.isArray(data.dates) ? data.dates : [];
+    items.forEach((d, index) => {
+      if (!d || typeof d.date !== 'string') return;
+      const key = `date-${slugify(d.label || d.kind || String(index + 1)) || index + 1}`;
+      consider({ key, date: d.date, label: d.label ?? '', kind: d.kind ?? 'other', recurring: d.recurring !== false, level: itemLevel(data, 'dates', d, path), marker: d['kin.calendar'], index });
+    });
+  }
+  return { dates, withheld };
+}
+
+const TITLES = {
+  en: { birthday: (name) => `${name}'s birthday`, other: (name, label) => `${name}: ${label}` },
+  es: { birthday: (name) => `Cumpleaños de ${name}`, other: (name, label) => `${name}: ${label}` },
+};
+const DESCRIPTIONS = {
+  en: { birthday: (name) => `From Kin. Ask in Gallery: "What should I get ${name}?"`, other: (name) => `From Kin. Ask in Gallery: "Anything pending with ${name}?"` },
+  es: { birthday: (name) => `De Kin. Pregunta en Gallery: «¿Qué le regalo a ${name}?»`, other: (name) => `De Kin. Pregunta en Gallery: «¿Qué tengo pendiente con ${name}?»` },
+};
+
+function eventTitle(d, lang = 'en') {
+  const t = TITLES[lang] ?? TITLES.en;
+  return d.kind === 'birthday' ? t.birthday(d.name) : t.other(d.name, d.label || d.kind);
+}
+
+// ------------------------------------------------------------------------------------- iCalendar
+
+const compact = (iso) => iso.replaceAll('-', '');
+
+/** TEXT values (RFC 5545 3.3.11). */
+const escapeText = (s) => String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+
+/** Fold lines longer than 75 octets (RFC 5545 3.1), never inside a UTF-8 character. */
+function fold(line) {
+  const enc = new TextEncoder();
+  if (enc.encode(line).length <= 75) return line;
+  const parts = [];
+  let current = '';
+  let size = 0;
+  for (const ch of line) {
+    const n = enc.encode(ch).length;
+    const limit = parts.length ? 74 : 75; // continuation lines start with a space
+    if (size + n > limit) {
+      parts.push(current);
+      current = '';
+      size = 0;
+    }
+    current += ch;
+    size += n;
+  }
+  parts.push(current);
+  return parts.join('\r\n ');
+}
+
+/** A duration in minutes as an iCalendar DURATION: -900 → "-PT15H", -19260 → "-P13DT9H". */
+function icsDuration(minutes) {
+  const sign = minutes < 0 ? '-' : '';
+  let rest = Math.abs(minutes);
+  const days = Math.floor(rest / 1440);
+  rest -= days * 1440;
+  const hours = Math.floor(rest / 60);
+  const mins = rest - hours * 60;
+  const time = hours || mins ? `T${hours ? `${hours}H` : ''}${mins ? `${mins}M` : ''}` : '';
+  return days || time ? `${sign}P${days ? `${days}D` : ''}${time}` : 'PT0S';
+}
+
+/** RRULE for a recurring date, with 29 February observed as the folder says (spec 15.2, 15.7). */
+function recurrenceRule(date, leapDay = 'feb28') {
+  const p = parsePersonDate(date);
+  if (p && p.month === 2 && p.day === 29) return leapDay === 'mar1' ? 'FREQ=YEARLY;BYYEARDAY=60' : 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1';
+  return 'FREQ=YEARLY';
+}
+
+/** First day of the event: the full date when the year is known, else the next occurrence. */
+function startOf(d, today, leapDay) {
+  const p = parsePersonDate(d.date);
+  if (p.year !== null) return d.date;
+  return nextOccurrence(d.date, today, { recurring: true, leapDay }).date;
+}
+
+/**
+ * An iCalendar file with these dates.
+ * @param {object} folder the Lore folder (for lead times, reminder time and leap_day)
+ * @param {object[]} dates from calendarDates
+ * @returns {string} CRLF-separated text
+ */
+function buildIcs(folder, dates, { today, now = new Date(), lang = 'en', version = '' } = {}) {
+  const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const at = clockParts(remindAt(folder));
+  const desc = DESCRIPTIONS[lang] ?? DESCRIPTIONS.en;
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:-//Lore//Kin ${version}//${lang.toUpperCase()}`, 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  for (const d of dates) {
+    const start = startOf(d, today, folder.leapDay);
+    const title = eventTitle(d, lang);
+    const lead = leadFor(folder, d.slug);
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${d.uid}`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART;VALUE=DATE:${compact(start)}`,
+      `DTEND;VALUE=DATE:${compact(addDays(start, 1))}`,
+      ...(d.recurring ? [`RRULE:${recurrenceRule(d.date, folder.leapDay)}`] : []),
+      `SUMMARY:${escapeText(title)}`,
+      `DESCRIPTION:${escapeText(d.kind === 'birthday' ? desc.birthday(d.name) : desc.other(d.name))}`,
+      'TRANSP:TRANSPARENT',
+      'BEGIN:VALARM',
+      'ACTION:DISPLAY',
+      `DESCRIPTION:${escapeText(title)}`,
+      `TRIGGER:${icsDuration(-lead * 1440 + at.hour * 60 + at.minute)}`,
+      'END:VALARM',
+      'END:VEVENT',
+    );
+  }
+  lines.push('END:VCALENDAR');
+  return `${lines.map(fold).join('\r\n')}\r\n`;
+}
+
+/** Record in the folder that these dates were exported, with the value exported. */
+function markExported(folder, dates) {
+  const bySlug = new Map();
+  for (const d of dates) bySlug.set(d.slug, [...(bySlug.get(d.slug) ?? []), d]);
+  for (const [slug, list] of bySlug) {
+    const data = folder.person(slug).data;
+    const patch = {};
+    const items = Array.isArray(data.dates) ? data.dates.map((x) => (x && typeof x === 'object' ? { ...x } : x)) : null;
+    let itemsChanged = false;
+    for (const d of list) {
+      if (d.key === 'birthday') patch['kin.calendar_birthday'] = d.date;
+      else if (items && items[d.index] && items[d.index].date === d.date && items[d.index]['kin.calendar'] !== d.date) {
+        items[d.index]['kin.calendar'] = d.date;
+        itemsChanged = true;
+      }
+    }
+    if (itemsChanged) patch.dates = items;
+    if (Object.keys(patch).length) folder.updatePerson(slug, patch);
+  }
+}
+
+/** File name for the export. */
+const calendarFileName = (today) => `kin-${today}.ics`;
+return { calendarDates, eventTitle, icsDuration, recurrenceRule, buildIcs, markExported, calendarFileName };
+})();
+
+// kin/src/store.mjs
+__m["kin/src/store.mjs"] = (() => {
+// Kin keeps the Lore folder in the webview's localStorage, one key per file, all under "lore:v1:"
+// (PRIVACY.md: every key is namespaced). Only files that changed are written back.
+
+const { LoreError, LoreFolder } = __m["lore-core/src/folder.mjs"];
+const { daysBetween } = __m["lore-core/src/dates.mjs"];
+
+const PREFIX = 'lore:v1:';
+const FILE = `${PREFIX}file:`;
+const BIN = `${PREFIX}bin:`;
+const META = `${PREFIX}meta`;
+const UNDO = `${PREFIX}undo`;
+const SCHEDULE = `${PREFIX}schedule`;
+
+function toBase64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+function fromBase64(text) {
+  const s = atob(text);
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+
+function storageKeys(storage) {
+  const keys = [];
+  for (let i = 0; i < storage.length; i++) keys.push(storage.key(i));
+  return keys;
+}
+
+/** Files currently stored, as path -> text or bytes. */
+function readFiles(storage) {
+  const files = new Map();
+  for (const key of storageKeys(storage)) {
+    if (key.startsWith(FILE)) files.set(key.slice(FILE.length), storage.getItem(key));
+    else if (key.startsWith(BIN)) files.set(key.slice(BIN.length), fromBase64(storage.getItem(key)));
+  }
+  return files;
+}
+
+const hasFolder = (storage) => storage.getItem(`${FILE}me.md`) !== null;
+
+/** Load the folder and a snapshot to compare against when saving. */
+function loadFolder(storage) {
+  const files = readFiles(storage);
+  return { folder: LoreFolder.fromFiles(files), snapshot: files };
+}
+
+const sameContent = (a, b) =>
+  typeof a === 'string' || typeof b === 'string' ? a === b : a.length === b.length && a.every((v, i) => v === b[i]);
+
+function guard(fn) {
+  try {
+    return fn();
+  } catch (e) {
+    if (e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014)) {
+      throw new LoreError('storage-full', 'Storage is full.');
+    }
+    throw e;
+  }
+}
+
+function writeFile(storage, path, content) {
+  if (typeof content === 'string') {
+    storage.setItem(`${FILE}${path}`, content);
+    storage.removeItem(`${BIN}${path}`);
+  } else {
+    storage.setItem(`${BIN}${path}`, toBase64(content));
+    storage.removeItem(`${FILE}${path}`);
+  }
+}
+
+/** Write what changed since `snapshot`. Returns the number of files written or removed. */
+function saveFolder(storage, folder, snapshot = new Map()) {
+  return guard(() => {
+    const files = folder.toFiles();
+    let n = 0;
+    for (const [path, content] of files) {
+      if (snapshot.has(path) && sameContent(snapshot.get(path), content)) continue;
+      writeFile(storage, path, content);
+      n++;
+    }
+    for (const path of snapshot.keys()) {
+      if (files.has(path)) continue;
+      storage.removeItem(`${FILE}${path}`);
+      storage.removeItem(`${BIN}${path}`);
+      n++;
+    }
+    return n;
+  });
+}
+
+/** Replace everything stored with this folder. */
+function replaceFolder(storage, folder) {
+  return guard(() => {
+    for (const key of storageKeys(storage)) {
+      if (key.startsWith(FILE) || key.startsWith(BIN)) storage.removeItem(key);
+    }
+    for (const [path, content] of folder.toFiles()) writeFile(storage, path, content);
+  });
+}
+
+// ------------------------------------------------------------------------------- meta and undo
+
+const DEFAULT_META = { firstUse: null, lastExport: null, changesSinceExport: 0, lastNudge: null };
+
+function readMeta(storage) {
+  try {
+    return { ...DEFAULT_META, ...JSON.parse(storage.getItem(META) ?? '{}') };
+  } catch {
+    return { ...DEFAULT_META };
+  }
+}
+
+function writeMeta(storage, meta) {
+  guard(() => storage.setItem(META, JSON.stringify(meta)));
+}
+
+/**
+ * Should Kin remind the owner to back up? After `everyChanges` changes, or `everyDays` days with
+ * unsaved changes since the last backup (or since first use), and at most once a day.
+ */
+function needsNudge(meta, today, { everyDays = 30, everyChanges = 20 } = {}) {
+  if (!meta.changesSinceExport) return false;
+  if (meta.lastNudge === today) return false;
+  if (meta.changesSinceExport >= everyChanges) return true;
+  const since = meta.lastExport ?? meta.firstUse;
+  return Boolean(since) && daysBetween(since, today) >= everyDays;
+}
+
+// ------------------------------------------------------------------------------- schedule
+
+// What Kin handed over to the app's notification scheduler. It belongs to this phone, not to the
+// Lore folder: notifications do not travel with a backup. The app cannot list or cancel them, so
+// this is how Kin avoids handing over the same reminder twice (spec 15.6).
+//   reminders: { id: 'YYYY-MM-DD' (day it was handed over) }
+//   digestNext: 'YYYY-MM-DDTHH:MM' (when the next weekly summary notification fires) or null
+const DEFAULT_SCHEDULE = { reminders: {}, digestNext: null };
+
+function readSchedule(storage) {
+  try {
+    const s = JSON.parse(storage.getItem(SCHEDULE) ?? '{}');
+    return { ...DEFAULT_SCHEDULE, ...s, reminders: { ...(s.reminders ?? {}) } };
+  } catch {
+    return { ...DEFAULT_SCHEDULE, reminders: {} };
+  }
+}
+
+function writeSchedule(storage, schedule, today) {
+  // Forget reminders whose day has passed: they can no longer be handed over twice.
+  for (const id of Object.keys(schedule.reminders)) {
+    const at = id.split('|').pop();
+    if (today && at.slice(0, 10) < today) delete schedule.reminders[id];
+  }
+  guard(() => storage.setItem(SCHEDULE, JSON.stringify(schedule)));
+}
+
+/** Keep the current folder so an import can be undone. */
+function saveUndo(storage, label, today) {
+  const files = {};
+  for (const [path, content] of readFiles(storage)) files[path] = typeof content === 'string' ? content : { base64: toBase64(content) };
+  guard(() => storage.setItem(UNDO, JSON.stringify({ label, date: today, files })));
+}
+
+function readUndo(storage) {
+  try {
+    const undo = JSON.parse(storage.getItem(UNDO) ?? 'null');
+    if (!undo) return null;
+    const files = new Map(Object.entries(undo.files).map(([p, c]) => [p, typeof c === 'string' ? c : fromBase64(c.base64)]));
+    return { label: undo.label, date: undo.date, folder: LoreFolder.fromFiles(files) };
+  } catch {
+    return null;
+  }
+}
+
+function clearUndo(storage) {
+  storage.removeItem(UNDO);
+}
+
+/** In-memory Web Storage, for tests and for running Kin outside a browser. */
+class MemoryStorage {
+  constructor() {
+    this.map = new Map();
+  }
+
+  get length() {
+    return this.map.size;
+  }
+
+  key(i) {
+    return [...this.map.keys()][i] ?? null;
+  }
+
+  getItem(k) {
+    return this.map.has(k) ? this.map.get(k) : null;
+  }
+
+  setItem(k, v) {
+    this.map.set(k, String(v));
+  }
+
+  removeItem(k) {
+    this.map.delete(k);
+  }
+
+  clear() {
+    this.map.clear();
+  }
+}
+return { PREFIX, readFiles, hasFolder, loadFolder, saveFolder, replaceFolder, readMeta, writeMeta, needsNudge, readSchedule, writeSchedule, saveUndo, readUndo, clearUndo, MemoryStorage };
+})();
+
+// kin/src/proactive.mjs
+__m["kin/src/proactive.mjs"] = (() => {
+// Kin speaking first: a short summary to open from a notification (digest), reminders before
+// dates handed to the app's notification scheduler (remind), and dates exported to a calendar
+// (remind with calendar). Kin works out every date and time from the device clock (spec 15.1) and
+// returns finished parameters for the app's schedule_notification intent, one line each:
+//   run_intent schedule_notification {"title":…,"message":…,"hour":9,"minute":0,"year":…}
+// The model only copies them into run_intent. Results end with a sentence the owner can say if
+// the model did not (docs/research/builtin-skills.md).
+
+const { addDays, daysBetween, formatIso, formatShortDate } = __m["lore-core/src/dates.mjs"];
+const { overdue: overdueQuery, upcoming: upcomingQuery } = __m["lore-core/src/queries.mjs"];
+const { isVisible } = __m["lore-core/src/sensitivity.mjs"];
+const { truncate } = __m["lore-core/src/text.mjs"];
+const { calendarDates } = __m["kin/src/calendar.mjs"];
+const { cleanText, reply, resolvePerson, showDate } = __m["kin/src/shared.mjs"];
+const { DEFAULT_TIME, GROUPS, WEEKDAYS, clockParts, digestSetting, groupOf, groupWord, leadDays, leadFor, parseClock, parseEvery, parseLead, remindAt } = __m["kin/src/settings.mjs"];
+const { needsNudge } = __m["kin/src/store.mjs"];
+
+const MAX_REMINDERS = 3;
+const DIGEST_DAYS = 14;
+const CALENDAR_ASPECT_RATIO = 1.2;
+
+const hhmm = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+const toMinutes = (clock) => clockParts(clock).hour * 60 + clockParts(clock).minute;
+
+/** The device's local date and minute of the day (spec 15.1: the clock, never the model). */
+function localClock(now = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+    const get = (type) => Number(parts.find((p) => p.type === type).value);
+    return { date: formatIso(get('year'), get('month'), get('day')), minutes: (get('hour') % 24) * 60 + get('minute') };
+  } catch {
+    return { date: now.toISOString().slice(0, 10), minutes: now.getUTCHours() * 60 + now.getUTCMinutes() };
+  }
+}
+
+/** Parameters for the app's schedule_notification intent (one-shot on a date, or daily). */
+function notificationParams({ title, message, date = null, at, daily = false }) {
+  const { hour, minute } = clockParts(at);
+  const params = { title, message, hour, minute };
+  if (daily) params.repeat_daily = true;
+  else Object.assign(params, { year: Number(date.slice(0, 4)), month: Number(date.slice(5, 7)), day: Number(date.slice(8, 10)) });
+  return params;
+}
+
+/** The line the model copies into run_intent. */
+const intentLine = (params) => `run_intent schedule_notification ${JSON.stringify(params)}`;
+
+const weekdayIndex = (iso) => new Date(`${iso}T00:00:00Z`).getUTCDay();
+
+/** Next time the weekday comes at that time, strictly after now. */
+function nextWeekly(day, at, clock) {
+  const ahead = (WEEKDAYS.indexOf(day) - weekdayIndex(clock.date) + 7) % 7;
+  const date = addDays(clock.date, ahead === 0 && toMinutes(at) <= clock.minutes ? 7 : ahead);
+  return date;
+}
+
+// ------------------------------------------------------------------------------------- digest
+
+function digestLines(ctx) {
+  const { t, folder, today } = ctx;
+  const opts = { today, includeSensitive: false }; // a summary is meant to be shown: never sensitive
+  const lines = [];
+  const more = (n) => (n > 0 ? ` ${t.andMore(n)}` : '');
+
+  const soon = upcomingQuery(folder, { ...opts, days: DIGEST_DAYS }).items;
+  if (soon.length) {
+    const items = soon.slice(0, 3).map((i) => t.digestDate(i.name, i.kind === 'birthday' ? t.birthdayWord : i.label || i.kind, t.inDays(i.daysAway)));
+    lines.push(t.digestDates(items) + more(soon.length - 3));
+  }
+
+  const late = overdueQuery(folder, opts).overdue;
+  if (late.length) lines.push(t.digestOverdue(late.slice(0, 3).map((p) => t.digestOverdueItem(p.name, p.daysSince))) + more(late.length - 3));
+
+  const promises = [];
+  for (const slug of folder.slugs()) {
+    let name;
+    try {
+      name = folder.nameOf(slug);
+    } catch {
+      continue;
+    }
+    if (!name) continue;
+    for (const e of folder.entries(slug, 'promises')) {
+      if (e.checked === true || e.attrs.status === 'cancelled' || !isVisible(e.level)) continue;
+      promises.push({ name, text: e.text, due: e.attrs.due ?? '9999', date: e.date ?? '' });
+    }
+  }
+  promises.sort((a, b) => a.due.localeCompare(b.due) || a.date.localeCompare(b.date));
+  if (promises.length) lines.push(t.digestPromises(promises.slice(0, 3).map((p) => `${p.name}: ${truncate(p.text, 40)}`)) + more(promises.length - 3));
+
+  const everyDays = Number(folder.setting('kin.export_every_days')) || 30;
+  const everyChanges = Number(folder.setting('kin.export_every_changes')) || 20;
+  if (needsNudge(ctx.meta, today, { everyDays, everyChanges })) {
+    lines.push(t.digestBackup(ctx.meta.changesSinceExport));
+    ctx.meta.lastNudge = today; // said here, so not again as a tip
+  }
+
+  if (!lines.length) return [t.digestNothing];
+  return [t.digestTitle(formatShortDate(today, ctx.lang)), ...lines];
+}
+
+function scheduleDigest(ctx, everyRaw, atRaw) {
+  const { t, folder } = ctx;
+  const current = digestSetting(folder);
+  const every = everyRaw ? parseEvery(everyRaw) : current?.every ?? 'day';
+  if (!every) return reply(t.badEvery(everyRaw));
+  if (!folder.writable) return reply(t.unsupportedVersion(folder.version));
+  if (every === 'off') {
+    folder.updateMe({ 'kin.digest': null });
+    ctx.schedule.digestNext = null;
+    ctx.scheduleChanged = true;
+    return reply(t.digestOff);
+  }
+  const at = atRaw ? parseClock(atRaw) : current?.at ?? DEFAULT_TIME;
+  if (!at) return reply(t.badClock(atRaw));
+  folder.updateMe({ 'kin.digest': { every, at } });
+
+  const { title, message } = t.digestNotification;
+  const lines = [t.digestSet(every, at)];
+  let params;
+  if (every === 'day') {
+    params = notificationParams({ title, message, at, daily: true });
+    ctx.schedule.digestNext = null;
+    lines.push(intentLine(params), t.fallbackPrefix + t.fallbackDaily(params));
+  } else {
+    const date = nextWeekly(every, at, ctx.clock);
+    params = notificationParams({ title, message, date, at });
+    ctx.schedule.digestNext = `${date}T${at}`;
+    lines.push(intentLine(params), t.digestWeekly, t.fallbackPrefix + t.fallbackOne(params));
+  }
+  ctx.scheduleChanged = true;
+  return reply(lines.join('\n'));
+}
+
+/**
+ * digest: the summary now, or with every/at, set up a notification that opens it. The app can
+ * only repeat daily, so a weekly summary is a one-shot notification that each summary renews.
+ */
+function digest(ctx, input) {
+  const every = cleanText(input.every ?? input.frequency ?? input.repeat);
+  const at = cleanText(input.at ?? input.time);
+  if (every || at) return scheduleDigest(ctx, every, at);
+
+  const lines = digestLines(ctx);
+  const setting = digestSetting(ctx.folder);
+  const now = `${ctx.clock.date}T${hhmm(ctx.clock.minutes)}`;
+  if (setting && setting.every !== 'day' && (!ctx.schedule.digestNext || ctx.schedule.digestNext <= now)) {
+    const date = nextWeekly(setting.every, setting.at, ctx.clock);
+    const params = notificationParams({ ...ctx.t.digestNotification, date, at: setting.at });
+    ctx.schedule.digestNext = `${date}T${setting.at}`;
+    ctx.scheduleChanged = true;
+    lines.push(intentLine(params), ctx.t.fallbackPrefix + ctx.t.fallbackOne(params));
+  }
+  return reply(lines.join('\n'));
+}
+
+// ------------------------------------------------------------------------------------- remind
+
+/**
+ * When to remind the owner of an occurrence (spec 15.6): `lead` days before at `at`, or, when that
+ * has passed, the next `at` that is not after the occurrence. Null when it is too late.
+ */
+function reminderSlot(occurrence, lead, at, clock) {
+  const atMin = toMinutes(at);
+  const target = addDays(occurrence, -lead);
+  if (target > clock.date || (target === clock.date && atMin > clock.minutes)) return { date: target, late: false };
+  const next = atMin > clock.minutes ? clock.date : addDays(clock.date, 1);
+  return next <= occurrence ? { date: next, late: true } : null;
+}
+
+/** Plan the reminders for some people: every visible date in the next year. */
+function planReminders(folder, slugs, clock) {
+  const wanted = new Set(slugs);
+  const at = remindAt(folder);
+  const all = upcomingQuery(folder, { today: clock.date, days: 366, includeSensitive: false });
+  const withSensitive = upcomingQuery(folder, { today: clock.date, days: 366, includeSensitive: true });
+  const sensitive = withSensitive.items.filter((i) => wanted.has(i.slug)).length - all.items.filter((i) => wanted.has(i.slug)).length;
+  const plans = [];
+  const tooLate = [];
+  for (const item of all.items) {
+    if (!wanted.has(item.slug)) continue;
+    const lead = leadFor(folder, item.slug);
+    const slot = reminderSlot(item.date, lead, at, clock);
+    if (!slot) {
+      tooLate.push(item);
+      continue;
+    }
+    const key = item.kind === 'birthday' ? 'birthday' : item.label;
+    plans.push({ ...item, lead, at, slot, id: `${item.slug}|${key}|${item.date}|${slot.date}T${at}` });
+  }
+  plans.sort((a, b) => a.slot.date.localeCompare(b.slot.date) || a.name.localeCompare(b.name));
+  return { plans, tooLate, sensitive };
+}
+
+// Labels are cut so three reminders stay short enough for a small model's context.
+const whatOf = (t, item) => (item.kind === 'birthday' ? t.birthdayWord : truncate(item.label || item.kind, 30));
+
+function reminderNotification(ctx, plan) {
+  const { t } = ctx;
+  const what = whatOf(t, plan);
+  const on = formatShortDate(plan.date, ctx.lang);
+  const days = daysBetween(plan.slot.date, plan.date);
+  const title = t.notifTitle(plan.name, what, days);
+  const message = plan.kind === 'birthday' ? t.notifBirthday(plan.name, on) : t.notifOther(plan.name, what, on);
+  return notificationParams({ title, message, date: plan.slot.date, at: plan.at });
+}
+
+function setLead(ctx, before, scope) {
+  const { t, folder } = ctx;
+  const lead = parseLead(before);
+  if (lead === null) return { reply: reply(t.badLead(before)) };
+  if (!folder.writable) return { reply: reply(t.unsupportedVersion(folder.version)) };
+  if (scope.slug) {
+    folder.updatePerson(scope.slug, { 'kin.lead_days': lead });
+    return { line: t.leadSet(scope.name, t.leadText(lead)) };
+  }
+  const current = leadDays(folder);
+  const next = scope.group === 'everyone' ? Object.fromEntries(GROUPS.map((g) => [g, lead])) : { ...current, [scope.group]: lead };
+  folder.updateMe({ 'kin.lead_days': next });
+  return { line: t.leadSet(t.groupName[scope.group], t.leadText(lead)) };
+}
+
+function calendarExport(ctx) {
+  const { t } = ctx;
+  const { dates, withheld } = calendarDates(ctx.folder, { today: ctx.today });
+  if (!dates.length) return reply(t.calendarEmpty);
+  const pending = dates.filter((d) => !d.exported).length;
+  const lines = [pending ? t.calendarPending(pending, dates.length - pending) : t.calendarNothing(dates.length)];
+  if (withheld) lines.push(t.calendarSensitive(withheld));
+  return reply(lines.join('\n'), { webview: { url: `calendar.html?lang=${ctx.lang}`, aspectRatio: CALENDAR_ASPECT_RATIO } });
+}
+
+/**
+ * remind: plan reminders for a person or a group (partner, family, friends, colleagues,
+ * everyone), optionally changing how long before ("before") and at what time ("at"). With
+ * calendar, export the dates to a calendar instead.
+ */
+function remind(ctx, input) {
+  const { t, folder } = ctx;
+  if (input.calendar === true || /^(true|yes|si|sí|1)$/i.test(String(input.calendar ?? ''))) return calendarExport(ctx);
+
+  const raw = cleanText(input.person ?? input.group);
+  const group = raw ? groupWord(raw) : 'everyone';
+  let scope;
+  let slugs;
+  if (group) {
+    const relationshipOf = (slug) => {
+      try {
+        return folder.person(slug).data.relationship;
+      } catch {
+        return null;
+      }
+    };
+    slugs = folder.slugs().filter((s) => group === 'everyone' || groupOf(relationshipOf(s)) === group);
+    scope = { group, label: t.scopeGroup[group] };
+  } else {
+    // Changing their lead time writes to their file, so a near spelling is a question then.
+    const who = resolvePerson(ctx, raw, { write: Boolean(cleanText(input.before ?? input.lead)) });
+    if (who.reply) return reply(who.reply);
+    slugs = [who.slug];
+    scope = { slug: who.slug, name: who.name, label: t.scopePerson(who.name) };
+  }
+
+  const lines = [];
+  const before = cleanText(input.before ?? input.lead);
+  if (before) {
+    const set = setLead(ctx, before, scope);
+    if (set.reply) return set.reply;
+    lines.push(set.line);
+  }
+  const atRaw = cleanText(input.at ?? input.time);
+  if (atRaw) {
+    const at = parseClock(atRaw);
+    if (!at) return reply(t.badClock(atRaw));
+    if (!folder.writable) return reply(t.unsupportedVersion(folder.version));
+    folder.updateMe({ 'kin.remind_at': at });
+  }
+
+  const { plans, tooLate, sensitive } = planReminders(folder, slugs, ctx.clock);
+  const done = ctx.schedule.reminders;
+  const fresh = plans.filter((p) => !done[p.id]);
+  const already = plans.filter((p) => done[p.id]);
+  const describe = (p) => `${p.name} (${showDate(p.slot.date, ctx)} ${p.at})`;
+  const tail = [];
+  if (tooLate.length) tail.push(t.remindTooLate(tooLate.map((i) => `${i.name}, ${whatOf(t, i)} ${t.inDays(i.daysAway)}`)));
+  if (sensitive > 0) tail.push(t.remindSensitive(sensitive));
+
+  if (!plans.length) return reply([...lines, t.remindNone(scope.label), ...tail].join('\n'));
+  if (!fresh.length && !ctx.confirm) return reply([...lines, t.remindAlready(already.slice(0, MAX_REMINDERS).map(describe)), ...tail].join('\n'));
+
+  const pool = fresh.length ? fresh : already;
+  const chosen = pool.slice(0, MAX_REMINDERS);
+  lines.push(t.remindTitle);
+  for (const p of chosen) {
+    const what = whatOf(t, p);
+    lines.push(t.remindLine(p.name, what, showDate(p.date, ctx), `${showDate(p.slot.date, ctx)}, ${p.at}`, p.slot.late));
+  }
+  const params = chosen.map((p) => reminderNotification(ctx, p));
+  lines.push(...params.map(intentLine));
+  if (pool.length > chosen.length) lines.push(t.remindMore(pool.length - chosen.length));
+  lines.push(...tail);
+  lines.push(t.fallbackPrefix + (params.length === 1 ? t.fallbackOne(params[0]) : t.fallbackMany));
+  for (const p of chosen) done[p.id] = ctx.today;
+  ctx.scheduleChanged = true;
+  return reply(lines.join('\n'));
+}
+return { MAX_REMINDERS, DIGEST_DAYS, CALENDAR_ASPECT_RATIO, localClock, notificationParams, intentLine, digest, reminderSlot, planReminders, remind };
+})();
+
 // kin/src/actions.mjs
 __m["kin/src/actions.mjs"] = (() => {
 // Kin's actions. Each takes a context ({folder, today, lang, t, confirm, includeSensitive}) and the
@@ -2847,19 +3994,20 @@ __m["kin/src/actions.mjs"] = (() => {
 // here, not in the model: it only picks the action and passes the user's words.
 
 const { formatShortDate, isCadence, parsePersonDate } = __m["lore-core/src/dates.mjs"];
-const { matchPerson } = __m["lore-core/src/match.mjs"];
 const { brief: briefQuery, giftContext, giftHistory, overdue: overdueQuery, personSummary, sameGift, upcoming: upcomingQuery } = __m["lore-core/src/queries.mjs"];
 const { entryLevel, isVisible } = __m["lore-core/src/sensitivity.mjs"];
 const { phrases } = __m["lore-core/src/i18n.mjs"];
-const { normalizeText, truncate } = __m["lore-core/src/text.mjs"];
+const { truncate } = __m["lore-core/src/text.mjs"];
+const { feedback } = __m["kin/src/feedback.mjs"];
+const { digest, remind } = __m["kin/src/proactive.mjs"];
+const { cleanText, has, looksSensitive, n, opts, reply, resolvePerson, showDate } = __m["kin/src/shared.mjs"];
+
+
 const { resolvePeriod, resolveWhen } = __m["kin/src/when.mjs"];
 
 const KINDS = ['gift_idea', 'gift_given', 'follow_up', 'promise', 'note', 'date', 'preference', 'plan'];
 
 // ------------------------------------------------------------------------------------- helpers
-
-const n = (s) => normalizeText(s ?? '');
-const has = (text, re) => re.test(` ${n(text)} `);
 
 const KIND_ALIASES = {
   gift_idea: ['gift idea', 'gift', 'idea', 'regalo', 'idea regalo', 'idea de regalo'],
@@ -2891,9 +4039,7 @@ const BIRTHDAY = / (birthday|born|cumple|cumpleanos|nacio|nacimiento) /;
 const NAME_DAY = / (santo|onomastica|name day|saint) /;
 const MEMORIAL = / (fallecio|fallecimiento|murio|died|death|muerte|memorial|funeral) /;
 const ANNIVERSARY = / (aniversario|anniversary|boda|wedding|se casaron|married|novios|together) /;
-const SENSITIVE = / (cancer\w*|tumou?r\w*|chemo\w*|quimio\w*|surgery|cirugia|operacion|operar\w*|operad\w*|quirofano|hospital\w*|ingresad\w*|enferm\w*|illness|biops\w*|radioterapia|ictus|stroke|infarto|heart attack|diagnos\w*|depres\w*|ansiedad|anxiety|therap\w*|terapia|psicolog\w*|psychiatr\w*|psiquiatr\w*|medication|medicacion|embarazad\w*|pregnan\w*|abort\w*|miscarriage|divorc\w*|separad\w*|breakup|ruptura|affair|infidel\w*|debt\w*|deuda\w*|unemployed|en paro|despid\w*|fired|laid off|lawsuit|demanda|juicio|arrest\w*|detenid\w*|police|policia|rehab|adiccion|addiction) /;
 
-const looksSensitive = (text) => has(text, SENSITIVE);
 
 const DATE_IN_TEXT = [
   /\b\d{4}-\d{2}-\d{2}\b/,
@@ -2913,56 +4059,7 @@ function findDateInText(text, today, lang) {
   return null;
 }
 
-function cleanText(s) {
-  return String(s ?? '').replace(/\s+/g, ' ').trim();
-}
 
-function capitalize(name) {
-  return name === name.toLowerCase() ? name.replace(/(^|[\s-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()) : name;
-}
-
-/** "12 abr" / "Apr 12", with the year ("12 abr 1990" / "Apr 12, 1990") when it is not this year. */
-function showDate(iso, ctx) {
-  const p = parsePersonDate(iso);
-  if (!p) return iso;
-  if (!p.year || String(p.year) === ctx.today.slice(0, 4)) return formatShortDate(iso, ctx.lang);
-  try {
-    return new Intl.DateTimeFormat(ctx.lang, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(p.year, p.month - 1, p.day)));
-  } catch {
-    return iso;
-  }
-}
-
-const reply = (text, extra = {}) => ({ text, ...extra });
-
-/**
- * Find who the owner means; create them only after the owner confirmed. Before writing, a match
- * that is only a near spelling ("Marte" for Marta) is a question, not a match.
- */
-const FILLER = /^(?:a|al|la|el|de|del|para|con|mi|to|for|with|my|the|about|sobre)\s+|(?:'s|’s)$/giu;
-
-function resolvePerson(ctx, query, { create = false, write = create } = {}) {
-  let q = cleanText(query);
-  if (!q) return { reply: ctx.t.needPerson };
-  let m = matchPerson(ctx.folder, q);
-  // "a Marta", "de Marta", "Marta's": try again without the filler words.
-  const bare = cleanText(q.replace(FILLER, '').replace(FILLER, ''));
-  if (m.status === 'none' && bare && bare !== q) {
-    const retry = matchPerson(ctx.folder, bare);
-    if (retry.status !== 'none') [q, m] = [bare, retry];
-  }
-  if (m.status === 'match' && (m.score >= 0.75 || !write)) return { slug: m.slug, name: m.name };
-  if (m.status === 'match') m.suggestions = [{ name: m.name }];
-  if (m.status === 'ambiguous') return { reply: ctx.t.ambiguous(q, m.candidates.map((c) => c.name)) };
-  if (create && ctx.confirm) {
-    const name = capitalize(q);
-    const slug = ctx.folder.createPerson({ name });
-    return { slug, name, created: true };
-  }
-  return { reply: ctx.t.notFound(q, m.suggestions.map((s) => s.name)) };
-}
-
-const opts = (ctx) => ({ today: ctx.today, includeSensitive: ctx.includeSensitive });
 
 /** Score entries against the owner's words: containment first, then shared words. */
 function matchEntries(entries, query) {
@@ -2988,6 +4085,9 @@ const isOpen = (e) => e.checked !== true && e.attrs.status !== 'cancelled';
 
 // ------------------------------------------------------------------------------------- capture
 
+/** Dates of things to do look forward ("el viernes" is the next one); the rest look back. */
+const captureDirection = (kind) => (['follow_up', 'promise', 'plan'].includes(kind) ? 'future' : 'past');
+
 function capture(ctx, input) {
   const { t } = ctx;
   // Without a kind, keep the information as a note rather than lose it.
@@ -3007,7 +4107,7 @@ function capture(ctx, input) {
   let section;
   let date = ctx.today;
   let extra = '';
-  const resolved = input.date ? resolveWhen(input.date, ctx.today, { direction: ['follow_up', 'promise', 'plan'].includes(kind) ? 'future' : 'past', lang: ctx.lang }) : null;
+  const resolved = input.date ? resolveWhen(input.date, ctx.today, { direction: captureDirection(kind), lang: ctx.lang }) : null;
   if (input.date && !resolved) return reply(t.badDate(input.date));
 
   switch (kind) {
@@ -3110,6 +4210,8 @@ function person(ctx, input) {
 }
 
 function brief(ctx, input) {
+  // "Resumen" without a person is the summary of everything.
+  if (!cleanText(input.person)) return digest(ctx, input);
   const who = resolvePerson(ctx, input.person);
   if (who.reply) return reply(who.reply);
   const b = briefQuery(ctx.folder, who.slug, { ...opts(ctx), language: ctx.lang });
@@ -3202,6 +4304,9 @@ const FIELD_ALIASES = {
 };
 const FIELD_LOOKUP = new Map(Object.entries(FIELD_ALIASES).flatMap(([k, words]) => words.map((w) => [w, k])));
 
+/** The field the owner means ("cumpleaños" → birthday), or null. */
+const normalizeField = (raw) => FIELD_LOOKUP.get(n(String(raw ?? '').replace(/_/g, ' '))) ?? null;
+
 const CADENCE_WORDS = {
   daily: '1d', diario: '1d', 'every day': '1d', 'cada dia': '1d', 'todos los dias': '1d',
   weekly: '1w', semanal: '1w', 'every week': '1w', 'cada semana': '1w', 'una vez a la semana': '1w',
@@ -3228,7 +4333,7 @@ const REMOVE_WORDS = new Set(['', 'none', 'nothing', 'remove', 'delete', 'ningun
 
 function update(ctx, input) {
   const { t } = ctx;
-  const field = FIELD_LOOKUP.get(n(String(input.field ?? '').replace(/_/g, ' ')));
+  const field = normalizeField(input.field);
   if (!field) return reply(t.needField);
   const who = resolvePerson(ctx, input.person, { write: true });
   if (who.reply) return reply(who.reply);
@@ -3373,15 +4478,21 @@ const ACTIONS = {
   update: { run: update, writes: true },
   link: { run: link, writes: true },
   delete: { run: deleteAction, writes: true },
-  backup: { run: backup },
+  backup: { run: backup, withoutData: true },
+  digest: { run: digest },
+  remind: { run: remind },
+  feedback: { run: feedback, withoutData: true },
 };
 
 const ACTION_ALIASES = {
   capture: ['capture', 'add', 'save', 'remember', 'note', 'store', 'guardar', 'apuntar', 'anotar'],
   person: ['person', 'who', 'about', 'info', 'summary', 'profile', 'persona', 'quien'],
   brief: ['brief', 'briefing', 'prepare', 'meeting', 'before meeting', 'resumen'],
+  digest: ['digest', 'overview', 'daily', 'weekly', 'summary of everything', 'resumen general', 'resumen diario', 'resumen semanal', 'resumen de todo'],
+  feedback: ['feedback', 'wrong', 'mistake', 'error', 'correction', 'correct', 'fix', 'incorrect', 'bad answer', 'mal', 'equivocado', 'equivocada', 'error de kin', 'corregir', 'correccion', 'no era eso'],
+  remind: ['remind', 'reminder', 'reminders', 'notify', 'notification', 'notifications', 'alert', 'recordar', 'recordatorio', 'recordatorios', 'avisar', 'aviso', 'avisos', 'notificacion', 'notificaciones', 'calendar', 'calendario', 'ics'],
   gift_context: ['gift context', 'gift', 'gifts', 'gift ideas', 'regalo', 'regalos'],
-  upcoming: ['upcoming', 'birthdays', 'dates', 'agenda', 'calendar', 'proximos', 'cumpleanos'],
+  upcoming: ['upcoming', 'birthdays', 'dates', 'agenda', 'proximos', 'cumpleanos'],
   overdue: ['overdue', 'catch up', 'lost touch', 'stale', 'contacts', 'pendientes de llamar'],
   done: ['done', 'complete', 'completed', 'check', 'resolved', 'hecho', 'returned', 'devuelto'],
   update: ['update', 'edit', 'change', 'set', 'cambiar', 'actualizar'],
@@ -3392,7 +4503,7 @@ const ACTION_ALIASES = {
 const ACTION_LOOKUP = new Map(Object.entries(ACTION_ALIASES).flatMap(([k, words]) => words.map((w) => [w, k])));
 
 const normalizeAction = (raw) => ACTION_LOOKUP.get(n(String(raw ?? '').replace(/_/g, ' '))) ?? null;
-return { KINDS, normalizeKind, looksSensitive, parseCadence, parseLinkType, BACKUP_ASPECT_RATIO, ACTIONS, normalizeAction };
+return { looksSensitive, KINDS, normalizeKind, captureDirection, normalizeField, parseCadence, parseLinkType, BACKUP_ASPECT_RATIO, ACTIONS, normalizeAction };
 })();
 
 // kin/src/messages.mjs
@@ -3400,6 +4511,12 @@ __m["kin/src/messages.mjs"] = (() => {
 // Everything Kin says, in English and Spanish. Results are short so a small model can repeat them.
 
 const plural = (n, one, many) => (n === 1 ? one : many);
+const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const WEEKDAY_NAMES = {
+  en: { monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday', thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday' },
+  es: { monday: 'lunes', tuesday: 'martes', wednesday: 'miércoles', thursday: 'jueves', friday: 'viernes', saturday: 'sábado', sunday: 'domingo' },
+};
 const list = (items, word) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} ${word} ${items.at(-1)}`);
 
 const SECTIONS = {
@@ -3516,6 +4633,54 @@ const en = {
   failed: (msg) => `Kin could not do that: ${msg}`,
   noData: 'Kin has no data yet. Tell me something about someone to start.',
   unsupportedVersion: (v) => `Your data is in Lore format ${v}, which this version of Kin cannot change. It can still read it. Update Kin to make changes.`,
+  // digest
+  digestTitle: (date) => `Kin summary · ${date}`,
+  digestDates: (items) => `Coming up: ${items.join('; ')}`,
+  digestDate: (name, what, when) => `${name}, ${what} ${when}`,
+  digestOverdue: (items) => `Not in touch for a while: ${items.join(', ')}`,
+  digestOverdueItem: (name, days) => `${name} (${days} ${plural(days, 'day', 'days')})`,
+  digestPromises: (items) => `Open promises: ${items.join('; ')}`,
+  digestBackup: (changes) => `Backup: ${changes} ${plural(changes, 'change', 'changes')} since the last one. Say "backup".`,
+  digestNothing: 'Nothing pending: no dates in the next 14 days, nobody overdue, no open promises.',
+  andMore: (n) => `(+${n})`,
+  birthdayWord: 'birthday',
+  digestSet: (every, at) => `Done: a summary ${every === 'day' ? 'every day' : `every ${WEEKDAY_NAMES.en[every]}`} at ${at}.`,
+  digestWeekly: 'Each week, when you open the summary, I will give you the next one.',
+  digestOff: 'Done: no more summaries from me. A daily one you scheduled stays until you remove it in the app\'s notifications screen.',
+  digestNotification: { title: 'Kin · Your summary', message: 'Kin: give me my summary' },
+  badEvery: (w) => `I didn't understand "${w}": say "every day" or a day of the week, like "every Monday".`,
+  badClock: (w) => `I didn't understand the time "${w}": say it like "9:00".`,
+  // reminders
+  remindTitle: 'Reminders to schedule:',
+  remindLine: (name, what, on, at, late) => `- ${name}, ${what} ${on}: reminder ${at}${late ? ' (as soon as possible)' : ''}`,
+  leadText: (days) => (days === 0 ? 'on the day' : `${days} ${plural(days, 'day', 'days')} before`),
+  notifTitle: (name, what, days) => `Kin · ${name}: ${what} ${days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}`,
+  notifBirthday: (name, on) => `What should I get ${name}? Their birthday is on ${on}.`,
+  notifOther: (name, label, on) => `${label} of ${name} is on ${on}. Anything pending with ${name}?`,
+  fallbackPrefix: 'If it was not scheduled, say: ',
+  fallbackOne: (p) => `"Schedule a notification on ${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')} at ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')} titled '${p.title}' with the text '${p.message}'"`,
+  fallbackDaily: (p) => `"Schedule a daily notification at ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')} titled '${p.title}' with the text '${p.message}'"`,
+  fallbackMany: '"Schedule those notifications"',
+  remindNone: (scope) => `No dates to remind you of ${scope} in the next year.`,
+  remindAlready: (items) => `I already gave you ${plural(items.length, 'this reminder', 'these reminders')}: ${items.join('; ')}. Should I give ${plural(items.length, 'it', 'them')} again?`,
+  remindMore: (n) => `${n} more later: ask me again to schedule the next ones.`,
+  remindTooLate: (items) => `Too late to remind you: ${items.join('; ')}.`,
+  remindSensitive: (n) => `${n} sensitive ${plural(n, 'date gets', 'dates get')} no reminder.`,
+  scopePerson: (name) => `for ${name}`,
+  scopeGroup: { partner: 'for your partner', family: 'for your family', friend: 'for your friends', colleague: 'for your colleagues', other: 'for everyone else', everyone: 'for anyone' },
+  groupName: { partner: 'your partner', family: 'your family', friend: 'your friends', colleague: 'your colleagues', other: 'everyone else', everyone: 'everyone' },
+  leadSet: (who, lead) => `Done: ${who}, ${lead}.`,
+  badLead: (w) => `I didn't understand "${w}": say it like "two weeks" or "3 days".`,
+  // calendar
+  calendarPending: (pending, done) => `For your calendar: ${pending} new or changed ${plural(pending, 'date', 'dates')}${done ? ` (${done} already exported)` : ''}. Tap "Add to calendar" in the panel below.`,
+  calendarNothing: (done) => `All your dates (${done}) are already in your calendar. If you deleted them, use "Export all again" in the panel below.`,
+  calendarEmpty: 'There are no dates to put in a calendar yet.',
+  calendarSensitive: (n) => `${n} sensitive ${plural(n, 'date stays', 'dates stay')} out of the calendar.`,
+  // feedback
+  feedbackSaved: (n, action) => `Noted, thank you (mistake ${n}${action ? `, about "${action}"` : ''}). To share them: say "backup", then "Share mistakes".`,
+  feedbackStale: (minutes) => ` The last Kin call was ${minutes} minutes ago; I noted that one.`,
+  feedbackNone: 'There is no earlier Kin answer to correct in this phone.',
+  needCorrection: 'What was wrong? Tell me what you expected.',
 };
 
 const es = {
@@ -3595,6 +4760,54 @@ const es = {
   failed: (msg) => `Kin no ha podido hacerlo: ${msg}`,
   noData: 'Kin aún no tiene datos. Cuéntame algo de alguien para empezar.',
   unsupportedVersion: (v) => `Tus datos están en formato Lore ${v}, que esta versión de Kin no puede modificar. Puede leerlos. Actualiza Kin para hacer cambios.`,
+  // digest
+  digestTitle: (date) => `Resumen de Kin · ${date}`,
+  digestDates: (items) => `Próximas fechas: ${items.join('; ')}`,
+  digestDate: (name, what, when) => `${name}, ${what} ${when}`,
+  digestOverdue: (items) => `Hace tiempo que no hablas con: ${items.join(', ')}`,
+  digestOverdueItem: (name, days) => `${name} (${days} ${plural(days, 'día', 'días')})`,
+  digestPromises: (items) => `Promesas pendientes: ${items.join('; ')}`,
+  digestBackup: (changes) => `Copia de seguridad: ${changes} ${plural(changes, 'cambio', 'cambios')} desde la última. Di «copia de seguridad».`,
+  digestNothing: 'Nada pendiente: ni fechas en los próximos 14 días, ni contactos atrasados, ni promesas.',
+  andMore: (n) => `(+${n})`,
+  birthdayWord: 'cumpleaños',
+  digestSet: (every, at) => `Hecho: un resumen ${every === 'day' ? 'cada día' : `cada ${WEEKDAY_NAMES.es[every]}`} a las ${at}.`,
+  digestWeekly: 'Cada semana, al abrir el resumen, te daré el aviso de la siguiente.',
+  digestOff: 'Hecho: no habrá más resúmenes. Si programaste uno diario, sigue hasta que lo quites en la pantalla de notificaciones de la app.',
+  digestNotification: { title: 'Kin · Tu resumen', message: 'Kin: dame mi resumen' },
+  badEvery: (w) => `No entiendo «${w}»: di «cada día» o un día de la semana, como «cada lunes».`,
+  badClock: (w) => `No entiendo la hora «${w}»: dímela como «9:00».`,
+  // reminders
+  remindTitle: 'Recordatorios para programar:',
+  remindLine: (name, what, on, at, late) => `- ${name}, ${what} ${on}: aviso el ${at}${late ? ' (lo antes posible)' : ''}`,
+  leadText: (days) => (days === 0 ? 'el mismo día' : `${days} ${plural(days, 'día', 'días')} antes`),
+  notifTitle: (name, what, days) => `Kin · ${capital(what)} de ${name} ${days === 0 ? 'hoy' : days === 1 ? 'mañana' : `en ${days} días`}`,
+  notifBirthday: (name, on) => `¿Qué le regalo a ${name}? Cumple el ${on}.`,
+  notifOther: (name, label, on) => `${label} de ${name} el ${on}. ¿Qué tengo pendiente con ${name}?`,
+  fallbackPrefix: 'Si no se ha programado, di: ',
+  fallbackOne: (p) => `«Programa una notificación el ${String(p.day).padStart(2, '0')}/${String(p.month).padStart(2, '0')}/${p.year} a las ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')} con el título "${p.title}" y el texto "${p.message}"»`,
+  fallbackDaily: (p) => `«Programa una notificación diaria a las ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')} con el título "${p.title}" y el texto "${p.message}"»`,
+  fallbackMany: '«Programa esas notificaciones»',
+  remindNone: (scope) => `No hay fechas que recordarte ${scope} en el próximo año.`,
+  remindAlready: (items) => `Ya te di ${plural(items.length, 'este recordatorio', 'estos recordatorios')}: ${items.join('; ')}. ¿${plural(items.length, 'Te lo doy', 'Te los doy')} otra vez?`,
+  remindMore: (n) => `Y ${n} más: pídemelo otra vez para programar los siguientes.`,
+  remindTooLate: (items) => `Ya no da tiempo a recordártelo: ${items.join('; ')}.`,
+  remindSensitive: (n) => `${n} ${plural(n, 'fecha sensible se queda', 'fechas sensibles se quedan')} sin recordatorio.`,
+  scopePerson: (name) => `de ${name}`,
+  scopeGroup: { partner: 'de tu pareja', family: 'de tu familia', friend: 'de tus amigos', colleague: 'de tus compañeros', other: 'del resto', everyone: 'de nadie' },
+  groupName: { partner: 'tu pareja', family: 'tu familia', friend: 'tus amigos', colleague: 'tus compañeros', other: 'el resto', everyone: 'todos' },
+  leadSet: (who, lead) => `Hecho: ${who}, ${lead}.`,
+  badLead: (w) => `No entiendo «${w}»: dímelo como «dos semanas» o «3 días».`,
+  // calendar
+  calendarPending: (pending, done) => `Para tu calendario: ${pending} ${plural(pending, 'fecha nueva o cambiada', 'fechas nuevas o cambiadas')}${done ? ` (${done} ya exportadas)` : ''}. Toca «Añadir al calendario» en el panel.`,
+  calendarNothing: (done) => `Todas tus fechas (${done}) ya están en el calendario. Si las borraste, usa «Exportar todo otra vez» en el panel.`,
+  calendarEmpty: 'Aún no hay fechas que poner en un calendario.',
+  calendarSensitive: (n) => `${n} ${plural(n, 'fecha sensible se queda', 'fechas sensibles se quedan')} fuera del calendario.`,
+  // feedback
+  feedbackSaved: (n, action) => `Anotado, gracias (error ${n}${action ? `, sobre «${action}»` : ''}). Para compartirlos: di «copia de seguridad» y toca «Compartir errores».`,
+  feedbackStale: (minutes) => ` La última llamada a Kin fue hace ${minutes} minutos; he anotado esa.`,
+  feedbackNone: 'No hay ninguna respuesta anterior de Kin que corregir en este teléfono.',
+  needCorrection: '¿Qué estaba mal? Dime qué esperabas.',
 };
 
 const CATALOGS = { en, es };
@@ -3607,194 +4820,6 @@ const languageOf = (lang) => (String(lang || 'en').toLowerCase().split('-')[0] i
 return { messages, languageOf };
 })();
 
-// kin/src/store.mjs
-__m["kin/src/store.mjs"] = (() => {
-// Kin keeps the Lore folder in the webview's localStorage, one key per file, all under "lore:v1:"
-// (PRIVACY.md: every key is namespaced). Only files that changed are written back.
-
-const { LoreError, LoreFolder } = __m["lore-core/src/folder.mjs"];
-const { daysBetween } = __m["lore-core/src/dates.mjs"];
-
-const PREFIX = 'lore:v1:';
-const FILE = `${PREFIX}file:`;
-const BIN = `${PREFIX}bin:`;
-const META = `${PREFIX}meta`;
-const UNDO = `${PREFIX}undo`;
-
-function toBase64(bytes) {
-  let s = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(s);
-}
-
-function fromBase64(text) {
-  const s = atob(text);
-  const out = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
-  return out;
-}
-
-function storageKeys(storage) {
-  const keys = [];
-  for (let i = 0; i < storage.length; i++) keys.push(storage.key(i));
-  return keys;
-}
-
-/** Files currently stored, as path -> text or bytes. */
-function readFiles(storage) {
-  const files = new Map();
-  for (const key of storageKeys(storage)) {
-    if (key.startsWith(FILE)) files.set(key.slice(FILE.length), storage.getItem(key));
-    else if (key.startsWith(BIN)) files.set(key.slice(BIN.length), fromBase64(storage.getItem(key)));
-  }
-  return files;
-}
-
-const hasFolder = (storage) => storage.getItem(`${FILE}me.md`) !== null;
-
-/** Load the folder and a snapshot to compare against when saving. */
-function loadFolder(storage) {
-  const files = readFiles(storage);
-  return { folder: LoreFolder.fromFiles(files), snapshot: files };
-}
-
-const sameContent = (a, b) =>
-  typeof a === 'string' || typeof b === 'string' ? a === b : a.length === b.length && a.every((v, i) => v === b[i]);
-
-function guard(fn) {
-  try {
-    return fn();
-  } catch (e) {
-    if (e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014)) {
-      throw new LoreError('storage-full', 'Storage is full.');
-    }
-    throw e;
-  }
-}
-
-function writeFile(storage, path, content) {
-  if (typeof content === 'string') {
-    storage.setItem(`${FILE}${path}`, content);
-    storage.removeItem(`${BIN}${path}`);
-  } else {
-    storage.setItem(`${BIN}${path}`, toBase64(content));
-    storage.removeItem(`${FILE}${path}`);
-  }
-}
-
-/** Write what changed since `snapshot`. Returns the number of files written or removed. */
-function saveFolder(storage, folder, snapshot = new Map()) {
-  return guard(() => {
-    const files = folder.toFiles();
-    let n = 0;
-    for (const [path, content] of files) {
-      if (snapshot.has(path) && sameContent(snapshot.get(path), content)) continue;
-      writeFile(storage, path, content);
-      n++;
-    }
-    for (const path of snapshot.keys()) {
-      if (files.has(path)) continue;
-      storage.removeItem(`${FILE}${path}`);
-      storage.removeItem(`${BIN}${path}`);
-      n++;
-    }
-    return n;
-  });
-}
-
-/** Replace everything stored with this folder. */
-function replaceFolder(storage, folder) {
-  return guard(() => {
-    for (const key of storageKeys(storage)) {
-      if (key.startsWith(FILE) || key.startsWith(BIN)) storage.removeItem(key);
-    }
-    for (const [path, content] of folder.toFiles()) writeFile(storage, path, content);
-  });
-}
-
-// ------------------------------------------------------------------------------- meta and undo
-
-const DEFAULT_META = { firstUse: null, lastExport: null, changesSinceExport: 0, lastNudge: null };
-
-function readMeta(storage) {
-  try {
-    return { ...DEFAULT_META, ...JSON.parse(storage.getItem(META) ?? '{}') };
-  } catch {
-    return { ...DEFAULT_META };
-  }
-}
-
-function writeMeta(storage, meta) {
-  guard(() => storage.setItem(META, JSON.stringify(meta)));
-}
-
-/**
- * Should Kin remind the owner to back up? After `everyChanges` changes, or `everyDays` days with
- * unsaved changes since the last backup (or since first use), and at most once a day.
- */
-function needsNudge(meta, today, { everyDays = 30, everyChanges = 20 } = {}) {
-  if (!meta.changesSinceExport) return false;
-  if (meta.lastNudge === today) return false;
-  if (meta.changesSinceExport >= everyChanges) return true;
-  const since = meta.lastExport ?? meta.firstUse;
-  return Boolean(since) && daysBetween(since, today) >= everyDays;
-}
-
-/** Keep the current folder so an import can be undone. */
-function saveUndo(storage, label, today) {
-  const files = {};
-  for (const [path, content] of readFiles(storage)) files[path] = typeof content === 'string' ? content : { base64: toBase64(content) };
-  guard(() => storage.setItem(UNDO, JSON.stringify({ label, date: today, files })));
-}
-
-function readUndo(storage) {
-  try {
-    const undo = JSON.parse(storage.getItem(UNDO) ?? 'null');
-    if (!undo) return null;
-    const files = new Map(Object.entries(undo.files).map(([p, c]) => [p, typeof c === 'string' ? c : fromBase64(c.base64)]));
-    return { label: undo.label, date: undo.date, folder: LoreFolder.fromFiles(files) };
-  } catch {
-    return null;
-  }
-}
-
-function clearUndo(storage) {
-  storage.removeItem(UNDO);
-}
-
-/** In-memory Web Storage, for tests and for running Kin outside a browser. */
-class MemoryStorage {
-  constructor() {
-    this.map = new Map();
-  }
-
-  get length() {
-    return this.map.size;
-  }
-
-  key(i) {
-    return [...this.map.keys()][i] ?? null;
-  }
-
-  getItem(k) {
-    return this.map.has(k) ? this.map.get(k) : null;
-  }
-
-  setItem(k, v) {
-    this.map.set(k, String(v));
-  }
-
-  removeItem(k) {
-    this.map.delete(k);
-  }
-
-  clear() {
-    this.map.clear();
-  }
-}
-return { PREFIX, readFiles, hasFolder, loadFolder, saveFolder, replaceFolder, readMeta, writeMeta, needsNudge, saveUndo, readUndo, clearUndo, MemoryStorage };
-})();
-
 // kin/src/kin.mjs
 __m["kin/src/kin.mjs"] = (() => {
 // Kin's entry point: what window.ai_edge_gallery_get_result calls. It parses what the model sent,
@@ -3805,7 +4830,9 @@ const { today: runtimeToday } = __m["lore-core/src/dates.mjs"];
 const { LoreError, LoreFolder } = __m["lore-core/src/folder.mjs"];
 const { ACTIONS, normalizeAction } = __m["kin/src/actions.mjs"];
 const { languageOf, messages } = __m["kin/src/messages.mjs"];
-const { hasFolder, loadFolder, needsNudge, readMeta, saveFolder, writeMeta } = __m["kin/src/store.mjs"];
+const { recordCall } = __m["kin/src/feedback.mjs"];
+const { localClock } = __m["kin/src/proactive.mjs"];
+const { hasFolder, loadFolder, needsNudge, readMeta, readSchedule, saveFolder, writeMeta, writeSchedule } = __m["kin/src/store.mjs"];
 
 const truthy = (v) => v === true || ['true', 'yes', 'si', 'sí', '1'].includes(String(v).toLowerCase().trim());
 
@@ -3840,6 +4867,19 @@ function deviceTimeZone() {
   }
 }
 
+/** What the model sent, as it sent it (for the mistake log): the object, or the raw text. */
+function rawParams(data) {
+  let value = data;
+  for (let i = 0; i < 3 && typeof value === 'string'; i++) {
+    try {
+      value = JSON.parse(value.trim());
+    } catch {
+      return { raw: String(data).slice(0, 500) };
+    }
+  }
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : { raw: String(data).slice(0, 500) };
+}
+
 /**
  * Run one request.
  * @param {string} data the JSON string from the app
@@ -3847,19 +4887,44 @@ function deviceTimeZone() {
  * @returns {string} JSON for the app
  */
 function handle(data, { storage, now = new Date() }) {
+  const call = { today: runtimeToday({ now }), lang: 'en', action: null };
+  const json = respond(data, storage, now, call);
+  // Remember this call, so the owner can say it was wrong (feedback).
+  if (call.action !== 'feedback') {
+    const out = JSON.parse(json);
+    const clock = localClock(now);
+    recordCall(storage, {
+      ts: now.toISOString(),
+      today: call.today,
+      time: `${String(Math.floor(clock.minutes / 60)).padStart(2, '0')}:${String(clock.minutes % 60).padStart(2, '0')}`,
+      lang: call.lang,
+      action: call.action,
+      params: rawParams(data),
+      result: out.result,
+      error: Boolean(out.error),
+    });
+  }
+  return json;
+}
+
+function respond(data, storage, now, call) {
   let t = messages('en');
   try {
     const input = parseInput(data);
-    const today = runtimeToday({ now });
+    const today = call.today;
     const exists = hasFolder(storage);
     const { folder, snapshot } = exists ? loadFolder(storage) : { folder: new LoreFolder(), snapshot: new Map() };
     const lang = languageOf(input.lang ?? folder.setting('language') ?? 'en');
+    call.lang = lang;
     t = messages(lang);
 
     const action = normalizeAction(input.action);
+    call.action = action ?? (typeof input.action === 'string' ? input.action : null);
     if (!action) return answer(t.unknownAction(input.action ?? '', Object.keys(ACTIONS)));
+    // "calendar" as the action means exporting dates to the calendar.
+    if (action === 'remind' && /^(calendar|calendario|ics)$/i.test(String(input.action).trim())) input.calendar = true;
     const spec = ACTIONS[action];
-    if (!exists && !spec.writes && action !== 'backup') return answer(t.noData);
+    if (!exists && !spec.writes && !spec.withoutData) return answer(t.noData);
     // A folder from a newer spec version is read, never written (spec section 13).
     if (exists && spec.writes && !folder.writable) return answer(t.unsupportedVersion(folder.version));
 
@@ -3868,8 +4933,11 @@ function handle(data, { storage, now = new Date() }) {
       fresh = LoreFolder.create({ name: lang === 'es' ? 'Yo' : 'Me', language: lang, timezone: deviceTimeZone() });
     }
     const meta = readMeta(storage);
-    const ctx = { folder: fresh, today, lang, t, meta, confirm: input.confirm, includeSensitive: input.sensitive };
+    const schedule = readSchedule(storage);
+    const clock = localClock(now);
+    const ctx = { folder: fresh, today, now, clock, lang, t, meta, schedule, storage, confirm: input.confirm, includeSensitive: input.sensitive };
     const out = spec.run(ctx, input);
+    if (ctx.scheduleChanged) writeSchedule(storage, schedule, today);
 
     let text = out.text;
     if (fresh.changes > 0) {
@@ -3881,7 +4949,8 @@ function handle(data, { storage, now = new Date() }) {
     if (exists || fresh.changes > 0) {
       const everyDays = Number(fresh.setting('kin.export_every_days')) || 30;
       const everyChanges = Number(fresh.setting('kin.export_every_changes')) || 20;
-      if (action !== 'backup' && needsNudge(meta, today, { everyDays, everyChanges })) {
+      // The backup panel and the summary speak about backups themselves.
+      if (action !== 'backup' && action !== 'digest' && needsNudge(meta, today, { everyDays, everyChanges })) {
         text += `\n${t.nudge}`;
         meta.lastNudge = today;
       }

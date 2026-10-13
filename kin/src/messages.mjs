@@ -1,6 +1,12 @@
 // Everything Kin says, in English and Spanish. Results are short so a small model can repeat them.
 
 const plural = (n, one, many) => (n === 1 ? one : many);
+const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const WEEKDAY_NAMES = {
+  en: { monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday', thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday' },
+  es: { monday: 'lunes', tuesday: 'martes', wednesday: 'miércoles', thursday: 'jueves', friday: 'viernes', saturday: 'sábado', sunday: 'domingo' },
+};
 const list = (items, word) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} ${word} ${items.at(-1)}`);
 
 const SECTIONS = {
@@ -117,6 +123,54 @@ const en = {
   failed: (msg) => `Kin could not do that: ${msg}`,
   noData: 'Kin has no data yet. Tell me something about someone to start.',
   unsupportedVersion: (v) => `Your data is in Lore format ${v}, which this version of Kin cannot change. It can still read it. Update Kin to make changes.`,
+  // digest
+  digestTitle: (date) => `Kin summary · ${date}`,
+  digestDates: (items) => `Coming up: ${items.join('; ')}`,
+  digestDate: (name, what, when) => `${name}, ${what} ${when}`,
+  digestOverdue: (items) => `Not in touch for a while: ${items.join(', ')}`,
+  digestOverdueItem: (name, days) => `${name} (${days} ${plural(days, 'day', 'days')})`,
+  digestPromises: (items) => `Open promises: ${items.join('; ')}`,
+  digestBackup: (changes) => `Backup: ${changes} ${plural(changes, 'change', 'changes')} since the last one. Say "backup".`,
+  digestNothing: 'Nothing pending: no dates in the next 14 days, nobody overdue, no open promises.',
+  andMore: (n) => `(+${n})`,
+  birthdayWord: 'birthday',
+  digestSet: (every, at) => `Done: a summary ${every === 'day' ? 'every day' : `every ${WEEKDAY_NAMES.en[every]}`} at ${at}.`,
+  digestWeekly: 'Each week, when you open the summary, I will give you the next one.',
+  digestOff: 'Done: no more summaries from me. A daily one you scheduled stays until you remove it in the app\'s notifications screen.',
+  digestNotification: { title: 'Kin · Your summary', message: 'Kin: give me my summary' },
+  badEvery: (w) => `I didn't understand "${w}": say "every day" or a day of the week, like "every Monday".`,
+  badClock: (w) => `I didn't understand the time "${w}": say it like "9:00".`,
+  // reminders
+  remindTitle: 'Reminders to schedule:',
+  remindLine: (name, what, on, at, late) => `- ${name}, ${what} ${on}: reminder ${at}${late ? ' (as soon as possible)' : ''}`,
+  leadText: (days) => (days === 0 ? 'on the day' : `${days} ${plural(days, 'day', 'days')} before`),
+  notifTitle: (name, what, days) => `Kin · ${name}: ${what} ${days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}`,
+  notifBirthday: (name, on) => `What should I get ${name}? Their birthday is on ${on}.`,
+  notifOther: (name, label, on) => `${label} of ${name} is on ${on}. Anything pending with ${name}?`,
+  fallbackPrefix: 'If it was not scheduled, say: ',
+  fallbackOne: (p) => `"Schedule a notification on ${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')} at ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')} titled '${p.title}' with the text '${p.message}'"`,
+  fallbackDaily: (p) => `"Schedule a daily notification at ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')} titled '${p.title}' with the text '${p.message}'"`,
+  fallbackMany: '"Schedule those notifications"',
+  remindNone: (scope) => `No dates to remind you of ${scope} in the next year.`,
+  remindAlready: (items) => `I already gave you ${plural(items.length, 'this reminder', 'these reminders')}: ${items.join('; ')}. Should I give ${plural(items.length, 'it', 'them')} again?`,
+  remindMore: (n) => `${n} more later: ask me again to schedule the next ones.`,
+  remindTooLate: (items) => `Too late to remind you: ${items.join('; ')}.`,
+  remindSensitive: (n) => `${n} sensitive ${plural(n, 'date gets', 'dates get')} no reminder.`,
+  scopePerson: (name) => `for ${name}`,
+  scopeGroup: { partner: 'for your partner', family: 'for your family', friend: 'for your friends', colleague: 'for your colleagues', other: 'for everyone else', everyone: 'for anyone' },
+  groupName: { partner: 'your partner', family: 'your family', friend: 'your friends', colleague: 'your colleagues', other: 'everyone else', everyone: 'everyone' },
+  leadSet: (who, lead) => `Done: ${who}, ${lead}.`,
+  badLead: (w) => `I didn't understand "${w}": say it like "two weeks" or "3 days".`,
+  // calendar
+  calendarPending: (pending, done) => `For your calendar: ${pending} new or changed ${plural(pending, 'date', 'dates')}${done ? ` (${done} already exported)` : ''}. Tap "Add to calendar" in the panel below.`,
+  calendarNothing: (done) => `All your dates (${done}) are already in your calendar. If you deleted them, use "Export all again" in the panel below.`,
+  calendarEmpty: 'There are no dates to put in a calendar yet.',
+  calendarSensitive: (n) => `${n} sensitive ${plural(n, 'date stays', 'dates stay')} out of the calendar.`,
+  // feedback
+  feedbackSaved: (n, action) => `Noted, thank you (mistake ${n}${action ? `, about "${action}"` : ''}). To share them: say "backup", then "Share mistakes".`,
+  feedbackStale: (minutes) => ` The last Kin call was ${minutes} minutes ago; I noted that one.`,
+  feedbackNone: 'There is no earlier Kin answer to correct in this phone.',
+  needCorrection: 'What was wrong? Tell me what you expected.',
 };
 
 const es = {
@@ -196,6 +250,54 @@ const es = {
   failed: (msg) => `Kin no ha podido hacerlo: ${msg}`,
   noData: 'Kin aún no tiene datos. Cuéntame algo de alguien para empezar.',
   unsupportedVersion: (v) => `Tus datos están en formato Lore ${v}, que esta versión de Kin no puede modificar. Puede leerlos. Actualiza Kin para hacer cambios.`,
+  // digest
+  digestTitle: (date) => `Resumen de Kin · ${date}`,
+  digestDates: (items) => `Próximas fechas: ${items.join('; ')}`,
+  digestDate: (name, what, when) => `${name}, ${what} ${when}`,
+  digestOverdue: (items) => `Hace tiempo que no hablas con: ${items.join(', ')}`,
+  digestOverdueItem: (name, days) => `${name} (${days} ${plural(days, 'día', 'días')})`,
+  digestPromises: (items) => `Promesas pendientes: ${items.join('; ')}`,
+  digestBackup: (changes) => `Copia de seguridad: ${changes} ${plural(changes, 'cambio', 'cambios')} desde la última. Di «copia de seguridad».`,
+  digestNothing: 'Nada pendiente: ni fechas en los próximos 14 días, ni contactos atrasados, ni promesas.',
+  andMore: (n) => `(+${n})`,
+  birthdayWord: 'cumpleaños',
+  digestSet: (every, at) => `Hecho: un resumen ${every === 'day' ? 'cada día' : `cada ${WEEKDAY_NAMES.es[every]}`} a las ${at}.`,
+  digestWeekly: 'Cada semana, al abrir el resumen, te daré el aviso de la siguiente.',
+  digestOff: 'Hecho: no habrá más resúmenes. Si programaste uno diario, sigue hasta que lo quites en la pantalla de notificaciones de la app.',
+  digestNotification: { title: 'Kin · Tu resumen', message: 'Kin: dame mi resumen' },
+  badEvery: (w) => `No entiendo «${w}»: di «cada día» o un día de la semana, como «cada lunes».`,
+  badClock: (w) => `No entiendo la hora «${w}»: dímela como «9:00».`,
+  // reminders
+  remindTitle: 'Recordatorios para programar:',
+  remindLine: (name, what, on, at, late) => `- ${name}, ${what} ${on}: aviso el ${at}${late ? ' (lo antes posible)' : ''}`,
+  leadText: (days) => (days === 0 ? 'el mismo día' : `${days} ${plural(days, 'día', 'días')} antes`),
+  notifTitle: (name, what, days) => `Kin · ${capital(what)} de ${name} ${days === 0 ? 'hoy' : days === 1 ? 'mañana' : `en ${days} días`}`,
+  notifBirthday: (name, on) => `¿Qué le regalo a ${name}? Cumple el ${on}.`,
+  notifOther: (name, label, on) => `${label} de ${name} el ${on}. ¿Qué tengo pendiente con ${name}?`,
+  fallbackPrefix: 'Si no se ha programado, di: ',
+  fallbackOne: (p) => `«Programa una notificación el ${String(p.day).padStart(2, '0')}/${String(p.month).padStart(2, '0')}/${p.year} a las ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')} con el título "${p.title}" y el texto "${p.message}"»`,
+  fallbackDaily: (p) => `«Programa una notificación diaria a las ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')} con el título "${p.title}" y el texto "${p.message}"»`,
+  fallbackMany: '«Programa esas notificaciones»',
+  remindNone: (scope) => `No hay fechas que recordarte ${scope} en el próximo año.`,
+  remindAlready: (items) => `Ya te di ${plural(items.length, 'este recordatorio', 'estos recordatorios')}: ${items.join('; ')}. ¿${plural(items.length, 'Te lo doy', 'Te los doy')} otra vez?`,
+  remindMore: (n) => `Y ${n} más: pídemelo otra vez para programar los siguientes.`,
+  remindTooLate: (items) => `Ya no da tiempo a recordártelo: ${items.join('; ')}.`,
+  remindSensitive: (n) => `${n} ${plural(n, 'fecha sensible se queda', 'fechas sensibles se quedan')} sin recordatorio.`,
+  scopePerson: (name) => `de ${name}`,
+  scopeGroup: { partner: 'de tu pareja', family: 'de tu familia', friend: 'de tus amigos', colleague: 'de tus compañeros', other: 'del resto', everyone: 'de nadie' },
+  groupName: { partner: 'tu pareja', family: 'tu familia', friend: 'tus amigos', colleague: 'tus compañeros', other: 'el resto', everyone: 'todos' },
+  leadSet: (who, lead) => `Hecho: ${who}, ${lead}.`,
+  badLead: (w) => `No entiendo «${w}»: dímelo como «dos semanas» o «3 días».`,
+  // calendar
+  calendarPending: (pending, done) => `Para tu calendario: ${pending} ${plural(pending, 'fecha nueva o cambiada', 'fechas nuevas o cambiadas')}${done ? ` (${done} ya exportadas)` : ''}. Toca «Añadir al calendario» en el panel.`,
+  calendarNothing: (done) => `Todas tus fechas (${done}) ya están en el calendario. Si las borraste, usa «Exportar todo otra vez» en el panel.`,
+  calendarEmpty: 'Aún no hay fechas que poner en un calendario.',
+  calendarSensitive: (n) => `${n} ${plural(n, 'fecha sensible se queda', 'fechas sensibles se quedan')} fuera del calendario.`,
+  // feedback
+  feedbackSaved: (n, action) => `Anotado, gracias (error ${n}${action ? `, sobre «${action}»` : ''}). Para compartirlos: di «copia de seguridad» y toca «Compartir errores».`,
+  feedbackStale: (minutes) => ` La última llamada a Kin fue hace ${minutes} minutos; he anotado esa.`,
+  feedbackNone: 'No hay ninguna respuesta anterior de Kin que corregir en este teléfono.',
+  needCorrection: '¿Qué estaba mal? Dime qué esperabas.',
 };
 
 const CATALOGS = { en, es };

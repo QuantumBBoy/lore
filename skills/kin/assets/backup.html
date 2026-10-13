@@ -72,6 +72,7 @@
     <button id="share" class="primary" type="button" data-t="share"></button>
     <button id="copy" type="button" data-t="copy"></button>
   </div>
+  <button id="mistakes" type="button" hidden></button>
 </section>
 
 <section id="restore" class="stack" role="tabpanel" hidden>
@@ -2607,6 +2608,338 @@ function applyImport(current, incoming, { mode, now = new Date() } = {}) {
 return { archiveName, exportArchive, importArchive, planImport, applyImport };
 })();
 
+// lore-core/src/match.mjs
+__m["lore-core/src/match.mjs"] = (() => {
+// Recognise the person the owner means (spec 15.5): exact names and aliases first, then single
+// names ("Marta"), prefixes ("Mart") and small typos ("Mrta"). When two people fit about equally
+// well the result is "ambiguous", and the caller must ask the owner before writing anything.
+
+const { normalizeText } = __m["lore-core/src/text.mjs"];
+
+const MATCH = 0.6; // below this, nobody matches
+const TIE = 0.05; // candidates this close to the best are a tie
+
+/** Optimal string alignment distance (Levenshtein with adjacent transpositions). */
+function editDistance(a, b) {
+  const m = a.length;
+  const n = b.length;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...new Array(n).fill(0)]);
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[m][n];
+}
+
+const similarity = (a, b) => 1 - editDistance(a, b) / Math.max(a.length, b.length, 1);
+
+/** How well `query` names someone called `name` (both normalised), 0 to 1. */
+function scoreName(q, name) {
+  if (!q || !name) return 0;
+  if (q === name) return 1;
+  const qt = q.split(' ');
+  const nt = name.split(' ');
+  if (qt.every((t) => nt.includes(t))) return 0.9; // "marta" in "marta ruiz", "ruiz marta"
+  if (q.length >= 3 && nt.some((t) => t.startsWith(q))) return 0.75; // "mart"
+  let best = similarity(q, name);
+  if (qt.length === 1) for (const t of nt) best = Math.max(best, similarity(q, t));
+  return best >= 0.75 ? 0.5 + 0.4 * best - 0.2 : 0; // 0.6 (at 0.75) to 0.7
+}
+
+/**
+ * Find the person meant by `query`.
+ * @returns {{status: 'match', slug, name, score} | {status: 'ambiguous', candidates: {slug, name, score}[]}
+ *   | {status: 'none', suggestions: {slug, name, score}[]}}
+ */
+function matchPerson(folder, query) {
+  const q = normalizeText(query);
+  const scored = [];
+  for (const slug of folder.slugs()) {
+    let data;
+    try {
+      data = folder.person(slug).data;
+    } catch {
+      continue;
+    }
+    const names = [data.name, ...(Array.isArray(data.aliases) ? data.aliases : [])].filter((x) => typeof x === 'string');
+    let score = Math.max(0, ...names.map((n) => scoreName(q, normalizeText(n))));
+    if (q === slug.replace(/-/g, ' ')) score = 1;
+    if (typeof data.relationship === 'string' && normalizeText(data.relationship) === q) score = Math.max(score, 0.85);
+    scored.push({ slug, name: typeof data.name === 'string' ? data.name : slug, score: Math.round(score * 1000) / 1000 });
+  }
+  scored.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  const best = scored[0];
+  if (!best || best.score < MATCH) {
+    return { status: 'none', query, suggestions: scored.filter((s) => s.score >= 0.4).slice(0, 3) };
+  }
+  const tied = scored.filter((s) => s.score >= best.score - TIE && s.score >= MATCH);
+  if (tied.length > 1) return { status: 'ambiguous', query, candidates: tied };
+  return { status: 'match', query, slug: best.slug, name: best.name, score: best.score };
+}
+return { editDistance, matchPerson };
+})();
+
+// kin/src/shared.mjs
+__m["kin/src/shared.mjs"] = (() => {
+// Helpers shared by Kin's actions: text normalising, showing dates, and finding the person the
+// owner means.
+
+const { formatShortDate, parsePersonDate } = __m["lore-core/src/dates.mjs"];
+const { matchPerson } = __m["lore-core/src/match.mjs"];
+const { normalizeText } = __m["lore-core/src/text.mjs"];
+
+const n = (s) => normalizeText(s ?? '');
+const has = (text, re) => re.test(` ${n(text)} `);
+
+// Words that make a note sensitive (spec 6.1): health, relationships, money, legal matters.
+const SENSITIVE = / (cancer\w*|tumou?r\w*|chemo\w*|quimio\w*|surgery|cirugia|operacion|operar\w*|operad\w*|quirofano|hospital\w*|ingresad\w*|enferm\w*|illness|biops\w*|radioterapia|ictus|stroke|infarto|heart attack|diagnos\w*|depres\w*|ansiedad|anxiety|therap\w*|terapia|psicolog\w*|psychiatr\w*|psiquiatr\w*|medication|medicacion|embarazad\w*|pregnan\w*|abort\w*|miscarriage|divorc\w*|separad\w*|breakup|ruptura|affair|infidel\w*|debt\w*|deuda\w*|unemployed|en paro|despid\w*|fired|laid off|lawsuit|demanda|juicio|arrest\w*|detenid\w*|police|policia|rehab|adiccion|addiction) /;
+
+/** Does this text look sensitive? Keyword detection: it misses things, so the owner can say so. */
+const looksSensitive = (text) => has(text, SENSITIVE);
+
+function cleanText(s) {
+  return String(s ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function capitalize(name) {
+  return name === name.toLowerCase() ? name.replace(/(^|[\s-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()) : name;
+}
+
+/** "12 abr" / "Apr 12", with the year ("12 abr 1990" / "Apr 12, 1990") when it is not this year. */
+function showDate(iso, ctx) {
+  const p = parsePersonDate(iso);
+  if (!p) return iso;
+  if (!p.year || String(p.year) === ctx.today.slice(0, 4)) return formatShortDate(iso, ctx.lang);
+  try {
+    return new Intl.DateTimeFormat(ctx.lang, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(p.year, p.month - 1, p.day)));
+  } catch {
+    return iso;
+  }
+}
+
+const reply = (text, extra = {}) => ({ text, ...extra });
+
+/**
+ * Find who the owner means; create them only after the owner confirmed. Before writing, a match
+ * that is only a near spelling ("Marte" for Marta) is a question, not a match.
+ */
+const FILLER = /^(?:a|al|la|el|de|del|para|con|mi|to|for|with|my|the|about|sobre)\s+|(?:'s|’s)$/giu;
+
+function resolvePerson(ctx, query, { create = false, write = create } = {}) {
+  let q = cleanText(query);
+  if (!q) return { reply: ctx.t.needPerson };
+  let m = matchPerson(ctx.folder, q);
+  // "a Marta", "de Marta", "Marta's": try again without the filler words.
+  const bare = cleanText(q.replace(FILLER, '').replace(FILLER, ''));
+  if (m.status === 'none' && bare && bare !== q) {
+    const retry = matchPerson(ctx.folder, bare);
+    if (retry.status !== 'none') [q, m] = [bare, retry];
+  }
+  if (m.status === 'match' && (m.score >= 0.75 || !write)) return { slug: m.slug, name: m.name };
+  if (m.status === 'match') m.suggestions = [{ name: m.name }];
+  if (m.status === 'ambiguous') return { reply: ctx.t.ambiguous(q, m.candidates.map((c) => c.name)) };
+  if (create && ctx.confirm) {
+    const name = capitalize(q);
+    const slug = ctx.folder.createPerson({ name });
+    return { slug, name, created: true };
+  }
+  return { reply: ctx.t.notFound(q, m.suggestions.map((s) => s.name)) };
+}
+
+const opts = (ctx) => ({ today: ctx.today, includeSensitive: ctx.includeSensitive });
+return { n, has, looksSensitive, cleanText, capitalize, showDate, reply, FILLER, resolvePerson, opts };
+})();
+
+// kin/src/version.mjs
+__m["kin/src/version.mjs"] = (() => {
+// Kin's version, shown in exported files and recorded with each logged mistake.
+const KIN_VERSION = '0.2.0';
+return { KIN_VERSION };
+})();
+
+// kin/src/feedback.mjs
+__m["kin/src/feedback.mjs"] = (() => {
+// Kin's mistake log, for evals. Kin remembers its last call (what the model sent and what Kin
+// answered). When the owner says it was wrong, the feedback action stores that call with the
+// owner's correction. The backup panel exports the log as JSON Lines (evals/cases.jsonl), with
+// people's names replaced by stable placeholders (person_1, person_2…) so it can be published.
+// Everything stays in this phone's storage, under lore: keys, until the owner shares it.
+
+const { foldAccents } = __m["lore-core/src/text.mjs"];
+const { cleanText, looksSensitive, reply } = __m["kin/src/shared.mjs"];
+const { KIN_VERSION } = __m["kin/src/version.mjs"];
+
+const LAST = 'lore:v1:last';
+const CASES = 'lore:v1:feedback';
+const NAMES = 'lore:v1:evalnames';
+const MAX_CASES = 500;
+
+const read = (storage, key, fallback) => {
+  try {
+    return JSON.parse(storage.getItem(key) ?? 'null') ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+const write = (storage, key, value) => {
+  try {
+    storage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false; // a full storage must not break the answer
+  }
+};
+
+/** Remember a call: what the model sent and what Kin answered. */
+function recordCall(storage, call) {
+  write(storage, LAST, call);
+}
+
+const readLastCall = (storage) => read(storage, LAST, null);
+const readCases = (storage) => read(storage, CASES, []);
+const caseCount = (storage) => readCases(storage).length;
+
+/** feedback: the owner says Kin's last answer was wrong, and how. */
+function feedback(ctx, input) {
+  const { t } = ctx;
+  const correction = cleanText(input.text ?? input.correction ?? input.feedback);
+  if (!correction) return reply(t.needCorrection);
+  const last = readLastCall(ctx.storage);
+  if (!last) return reply(t.feedbackNone);
+  const cases = readCases(ctx.storage);
+  const minutes = Math.max(0, Math.round((ctx.now.getTime() - Date.parse(last.ts)) / 60000));
+  cases.push({
+    id: `${ctx.today}-${String(cases.length + 1).padStart(3, '0')}`,
+    ts: ctx.now.toISOString(),
+    call_ts: last.ts,
+    today: last.today,
+    time: last.time,
+    lang: last.lang,
+    kin: KIN_VERSION,
+    spec: ctx.folder.version,
+    action: last.action,
+    params: last.params,
+    result: last.result,
+    error: last.error ?? false,
+    correction,
+    minutes_since_call: minutes,
+    fault: 'unknown',
+    expected: null,
+  });
+  write(ctx.storage, CASES, cases.slice(-MAX_CASES));
+  return reply(t.feedbackSaved(cases.length, last.action) + (minutes > 30 ? t.feedbackStale(minutes) : ''));
+}
+
+// ------------------------------------------------------------------------------------- export
+
+const ACCENTS = { a: 'aáàäâã', e: 'eéèëê', i: 'iíìïî', o: 'oóòöôõ', u: 'uúùüû', n: 'nñ', c: 'cç' };
+const escape = (ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** A whole-word, case- and accent-insensitive pattern for a name. */
+function namePattern(name) {
+  const body = [...foldAccents(name).toLowerCase()].map((ch) => (ACCENTS[ch] ? `[${ACCENTS[ch]}]` : escape(ch))).join('');
+  return new RegExp(`(?<![\\p{L}\\p{N}_-])${body}(?![\\p{L}\\p{N}_-])`, 'giu');
+}
+
+const key = (s) => foldAccents(String(s)).toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * Placeholders for everyone in the folder, stable across exports: the same person is always
+ * person_N on this phone. The owner is "owner".
+ */
+function placeholders(storage, folder, extraNames) {
+  const map = read(storage, NAMES, { slugs: {}, words: {}, next: 1 });
+  const variants = [];
+  const add = (text, holder) => {
+    if (typeof text === 'string' && text.trim().length >= 2) variants.push([text.trim(), holder]);
+  };
+  for (const slug of folder.slugs()) {
+    let data;
+    try {
+      data = folder.person(slug).data;
+    } catch {
+      continue;
+    }
+    map.slugs[slug] ??= `person_${map.next++}`;
+    const holder = map.slugs[slug];
+    add(slug, holder);
+    add(data.name, holder);
+    for (const alias of Array.isArray(data.aliases) ? data.aliases : []) add(alias, holder);
+    const first = typeof data.name === 'string' ? data.name.split(/\s+/)[0] : null;
+    if (first && first.length >= 3) add(first, holder);
+  }
+  let owner = null;
+  try {
+    owner = folder.me.data;
+  } catch {
+    // no owner file: nothing to hide for them
+  }
+  if (owner) {
+    add(owner.name, 'owner');
+    for (const alias of Array.isArray(owner.aliases) ? owner.aliases : []) add(alias, 'owner');
+  }
+  // Names the model used that match nobody in the folder still get a placeholder.
+  for (const name of extraNames) {
+    const k = key(name);
+    if (!k || variants.some(([v]) => key(v) === k)) continue;
+    map.words[k] ??= `person_${map.next++}`;
+    add(name, map.words[k]);
+  }
+  write(storage, NAMES, map);
+  variants.sort((a, b) => b[0].length - a[0].length);
+  return variants.map(([name, holder]) => [namePattern(name), holder]);
+}
+
+const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+const NUMBERS = /\+?\d[\d\s().-]{6,}\d/g;
+
+function scrub(text, patterns) {
+  let out = String(text);
+  for (const [re, holder] of patterns) out = out.replace(re, holder);
+  out = out.replace(EMAIL, '[email]');
+  // Long digit runs are phone numbers; dates (8 digits at most) stay.
+  return out.replace(NUMBERS, (m) => (m.replace(/\D/g, '').length >= 9 ? '[phone]' : m));
+}
+
+function scrubDeep(value, patterns) {
+  if (typeof value === 'string') return scrub(value, patterns);
+  if (Array.isArray(value)) return value.map((v) => scrubDeep(v, patterns));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrubDeep(v, patterns)]));
+  return value;
+}
+
+const PERSON_PARAMS = ['person', 'name', 'who', 'other'];
+
+/**
+ * The log as JSON Lines, one case per line, ready to commit as evals/cases.jsonl. In what the
+ * model sent, what Kin answered and the correction, names become placeholders and e-mail
+ * addresses and phone numbers are removed. A call that asked for sensitive data, or whose text
+ * looks sensitive, keeps none of the three.
+ * @returns {{text: string, count: number}}
+ */
+function exportCases(storage, folder) {
+  const cases = readCases(storage);
+  const extra = cases.flatMap((c) => PERSON_PARAMS.map((p) => c.params?.[p]).filter((v) => typeof v === 'string'));
+  const patterns = placeholders(storage, folder, extra);
+  const lines = cases.map((c) => {
+    const sensitive = c.params?.sensitive === true || String(c.params?.sensitive) === 'true' || looksSensitive(c.params?.text ?? '') || looksSensitive(c.correction ?? '');
+    const out = { ...c, params: scrubDeep(c.params, patterns), result: scrub(c.result ?? '', patterns), correction: scrub(c.correction ?? '', patterns), sensitive };
+    if (sensitive) {
+      if (out.params && typeof out.params.text === 'string') out.params.text = '[sensitive]';
+      out.result = '[sensitive]';
+      out.correction = '[sensitive]';
+    }
+    return JSON.stringify(out);
+  });
+  return { text: lines.length ? `${lines.join('\n')}\n` : '', count: lines.length };
+}
+return { MAX_CASES, recordCall, readLastCall, readCases, caseCount, feedback, exportCases };
+})();
+
 // kin/src/store.mjs
 __m["kin/src/store.mjs"] = (() => {
 // Kin keeps the Lore folder in the webview's localStorage, one key per file, all under "lore:v1:"
@@ -2620,6 +2953,7 @@ const FILE = `${PREFIX}file:`;
 const BIN = `${PREFIX}bin:`;
 const META = `${PREFIX}meta`;
 const UNDO = `${PREFIX}undo`;
+const SCHEDULE = `${PREFIX}schedule`;
 
 function toBase64(bytes) {
   let s = '';
@@ -2740,6 +3074,33 @@ function needsNudge(meta, today, { everyDays = 30, everyChanges = 20 } = {}) {
   return Boolean(since) && daysBetween(since, today) >= everyDays;
 }
 
+// ------------------------------------------------------------------------------- schedule
+
+// What Kin handed over to the app's notification scheduler. It belongs to this phone, not to the
+// Lore folder: notifications do not travel with a backup. The app cannot list or cancel them, so
+// this is how Kin avoids handing over the same reminder twice (spec 15.6).
+//   reminders: { id: 'YYYY-MM-DD' (day it was handed over) }
+//   digestNext: 'YYYY-MM-DDTHH:MM' (when the next weekly summary notification fires) or null
+const DEFAULT_SCHEDULE = { reminders: {}, digestNext: null };
+
+function readSchedule(storage) {
+  try {
+    const s = JSON.parse(storage.getItem(SCHEDULE) ?? '{}');
+    return { ...DEFAULT_SCHEDULE, ...s, reminders: { ...(s.reminders ?? {}) } };
+  } catch {
+    return { ...DEFAULT_SCHEDULE, reminders: {} };
+  }
+}
+
+function writeSchedule(storage, schedule, today) {
+  // Forget reminders whose day has passed: they can no longer be handed over twice.
+  for (const id of Object.keys(schedule.reminders)) {
+    const at = id.split('|').pop();
+    if (today && at.slice(0, 10) < today) delete schedule.reminders[id];
+  }
+  guard(() => storage.setItem(SCHEDULE, JSON.stringify(schedule)));
+}
+
 /** Keep the current folder so an import can be undone. */
 function saveUndo(storage, label, today) {
   const files = {};
@@ -2792,16 +3153,18 @@ class MemoryStorage {
     this.map.clear();
   }
 }
-return { PREFIX, readFiles, hasFolder, loadFolder, saveFolder, replaceFolder, readMeta, writeMeta, needsNudge, saveUndo, readUndo, clearUndo, MemoryStorage };
+return { PREFIX, readFiles, hasFolder, loadFolder, saveFolder, replaceFolder, readMeta, writeMeta, needsNudge, readSchedule, writeSchedule, saveUndo, readUndo, clearUndo, MemoryStorage };
 })();
 
 // kin/src/backup.mjs
 __m["kin/src/backup.mjs"] = (() => {
 // What the backup panel (assets/backup.html) does with storage: export the folder as a Lore
-// archive (.zip) or as text, read a backup back, preview and apply an import, and undo it.
+// archive (.zip) or as text, read a backup back, preview and apply an import, and undo it. It
+// also shares the mistake log (feedback.mjs) for evals.
 
 const { applyImport, archiveName, exportArchive, importArchive, planImport } = __m["lore-core/src/archive.mjs"];
 const { LoreError, LoreFolder } = __m["lore-core/src/folder.mjs"];
+const { caseCount, exportCases } = __m["kin/src/feedback.mjs"];
 const { loadFolder, readMeta, readUndo, replaceFolder, clearUndo, saveUndo, writeMeta } = __m["kin/src/store.mjs"];
 
 
@@ -2809,7 +3172,12 @@ const { loadFolder, readMeta, readUndo, replaceFolder, clearUndo, saveUndo, writ
 function stats(storage) {
   const { folder } = loadFolder(storage);
   const meta = readMeta(storage);
-  return { people: folder.slugs().length, lastExport: meta.lastExport, changesSinceExport: meta.changesSinceExport, hasUndo: readUndo(storage) !== null };
+  return { people: folder.slugs().length, lastExport: meta.lastExport, changesSinceExport: meta.changesSinceExport, hasUndo: readUndo(storage) !== null, mistakes: caseCount(storage) };
+}
+
+/** The mistake log as evals/cases.jsonl, with names replaced by placeholders. */
+function exportMistakes(storage) {
+  return exportCases(storage, loadFolder(storage).folder);
 }
 
 /** The whole folder as a Lore archive. */
@@ -2888,7 +3256,7 @@ function undoImport(storage) {
   clearUndo(storage);
   return true;
 }
-return { archiveName, stats, exportZip, exportText, markExported, readBackup, preview, applyBackup, undoImport };
+return { archiveName, stats, exportMistakes, exportZip, exportText, markExported, readBackup, preview, applyBackup, undoImport };
 })();
 return __m["kin/src/backup.mjs"];
 })();
@@ -2901,6 +3269,9 @@ const TEXT = {
     exportHelp: 'Keep it in Files or send it to yourself. It has everything, sensitive notes too.',
     share: 'Share file',
     copy: 'Copy as text',
+    mistakes: (n) => `Share mistakes for evals (${n})`,
+    mistakesShared: 'Shared. Names are replaced by person_1, person_2…; check the file before publishing it.',
+    mistakesCopied: 'Copied as text. Names are replaced by person_1, person_2…; check it before publishing it.',
     importTitle: 'Restore',
     pick: 'Choose a backup file',
     pastePlaceholder: 'Or paste a backup here',
@@ -2928,6 +3299,9 @@ const TEXT = {
     exportHelp: 'Guárdala en Archivos o mándatela. Lo incluye todo, también las notas sensibles.',
     share: 'Compartir archivo',
     copy: 'Copiar como texto',
+    mistakes: (n) => `Compartir errores para evals (${n})`,
+    mistakesShared: 'Compartido. Los nombres van como person_1, person_2…; revisa el archivo antes de publicarlo.',
+    mistakesCopied: 'Copiado como texto. Los nombres van como person_1, person_2…; revísalo antes de publicarlo.',
     importTitle: 'Recuperar',
     pick: 'Elegir un archivo de copia',
     pastePlaceholder: 'O pega aquí una copia',
@@ -2995,6 +3369,8 @@ function refresh() {
   const s = Backup.stats(storage);
   $('stats').textContent = T.stats(s, s.lastExport);
   $('undo').hidden = !s.hasUndo;
+  $('mistakes').hidden = !s.mistakes;
+  $('mistakes').textContent = T.mistakes(s.mistakes);
 }
 
 $('share').addEventListener('click', async () => {
@@ -3023,6 +3399,24 @@ $('copy').addEventListener('click', async () => {
     refresh();
   } catch (e) {
     failed(e);
+  }
+});
+
+// The mistake log for evals: shared as cases.jsonl, or copied when files cannot be shared.
+$('mistakes').addEventListener('click', async () => {
+  const { text } = Backup.exportMistakes(storage);
+  const file = new File([text], 'cases.jsonl', { type: 'text/plain' });
+  try {
+    if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+      await navigator.share({ files: [file], title: 'cases.jsonl' });
+      status(T.mistakesShared, 'ok');
+    } else {
+      await navigator.clipboard.writeText(text);
+      status(T.mistakesCopied, 'ok');
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') status(T.cancelled);
+    else failed(e);
   }
 });
 

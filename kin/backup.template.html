@@ -72,6 +72,7 @@
     <button id="share" class="primary" type="button" data-t="share"></button>
     <button id="copy" type="button" data-t="copy"></button>
   </div>
+  <button id="mistakes" type="button" hidden></button>
 </section>
 
 <section id="restore" class="stack" role="tabpanel" hidden>
@@ -108,6 +109,9 @@ const TEXT = {
     exportHelp: 'Keep it in Files or send it to yourself. It has everything, sensitive notes too.',
     share: 'Share file',
     copy: 'Copy as text',
+    mistakes: (n) => `Share mistakes for evals (${n})`,
+    mistakesShared: 'Shared. Names are replaced by person_1, person_2…; check the file before publishing it.',
+    mistakesCopied: 'Copied as text. Names are replaced by person_1, person_2…; check it before publishing it.',
     importTitle: 'Restore',
     pick: 'Choose a backup file',
     pastePlaceholder: 'Or paste a backup here',
@@ -135,6 +139,9 @@ const TEXT = {
     exportHelp: 'Guárdala en Archivos o mándatela. Lo incluye todo, también las notas sensibles.',
     share: 'Compartir archivo',
     copy: 'Copiar como texto',
+    mistakes: (n) => `Compartir errores para evals (${n})`,
+    mistakesShared: 'Compartido. Los nombres van como person_1, person_2…; revisa el archivo antes de publicarlo.',
+    mistakesCopied: 'Copiado como texto. Los nombres van como person_1, person_2…; revísalo antes de publicarlo.',
     importTitle: 'Recuperar',
     pick: 'Elegir un archivo de copia',
     pastePlaceholder: 'O pega aquí una copia',
@@ -202,6 +209,8 @@ function refresh() {
   const s = Backup.stats(storage);
   $('stats').textContent = T.stats(s, s.lastExport);
   $('undo').hidden = !s.hasUndo;
+  $('mistakes').hidden = !s.mistakes;
+  $('mistakes').textContent = T.mistakes(s.mistakes);
 }
 
 $('share').addEventListener('click', async () => {
@@ -230,6 +239,24 @@ $('copy').addEventListener('click', async () => {
     refresh();
   } catch (e) {
     failed(e);
+  }
+});
+
+// The mistake log for evals: shared as cases.jsonl, or copied when files cannot be shared.
+$('mistakes').addEventListener('click', async () => {
+  const { text } = Backup.exportMistakes(storage);
+  const file = new File([text], 'cases.jsonl', { type: 'text/plain' });
+  try {
+    if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+      await navigator.share({ files: [file], title: 'cases.jsonl' });
+      status(T.mistakesShared, 'ok');
+    } else {
+      await navigator.clipboard.writeText(text);
+      status(T.mistakesCopied, 'ok');
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') status(T.cancelled);
+    else failed(e);
   }
 });
 

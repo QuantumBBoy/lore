@@ -1,8 +1,10 @@
 // What the backup panel (assets/backup.html) does with storage: export the folder as a Lore
-// archive (.zip) or as text, read a backup back, preview and apply an import, and undo it.
+// archive (.zip) or as text, read a backup back, preview and apply an import, and undo it. It
+// also shares the mistake log (feedback.mjs) for evals.
 
 import { applyImport, archiveName, exportArchive, importArchive, planImport } from '../../lore-core/src/archive.mjs';
 import { LoreError, LoreFolder } from '../../lore-core/src/folder.mjs';
+import { caseCount, exportCases } from './feedback.mjs';
 import { loadFolder, readMeta, readUndo, replaceFolder, clearUndo, saveUndo, writeMeta } from './store.mjs';
 
 export { archiveName };
@@ -10,7 +12,12 @@ export { archiveName };
 export function stats(storage) {
   const { folder } = loadFolder(storage);
   const meta = readMeta(storage);
-  return { people: folder.slugs().length, lastExport: meta.lastExport, changesSinceExport: meta.changesSinceExport, hasUndo: readUndo(storage) !== null };
+  return { people: folder.slugs().length, lastExport: meta.lastExport, changesSinceExport: meta.changesSinceExport, hasUndo: readUndo(storage) !== null, mistakes: caseCount(storage) };
+}
+
+/** The mistake log as evals/cases.jsonl, with names replaced by placeholders. */
+export function exportMistakes(storage) {
+  return exportCases(storage, loadFolder(storage).folder);
 }
 
 /** The whole folder as a Lore archive. */

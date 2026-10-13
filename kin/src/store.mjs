@@ -9,6 +9,7 @@ const FILE = `${PREFIX}file:`;
 const BIN = `${PREFIX}bin:`;
 const META = `${PREFIX}meta`;
 const UNDO = `${PREFIX}undo`;
+const SCHEDULE = `${PREFIX}schedule`;
 
 function toBase64(bytes) {
   let s = '';
@@ -127,6 +128,33 @@ export function needsNudge(meta, today, { everyDays = 30, everyChanges = 20 } = 
   if (meta.changesSinceExport >= everyChanges) return true;
   const since = meta.lastExport ?? meta.firstUse;
   return Boolean(since) && daysBetween(since, today) >= everyDays;
+}
+
+// ------------------------------------------------------------------------------- schedule
+
+// What Kin handed over to the app's notification scheduler. It belongs to this phone, not to the
+// Lore folder: notifications do not travel with a backup. The app cannot list or cancel them, so
+// this is how Kin avoids handing over the same reminder twice (spec 15.6).
+//   reminders: { id: 'YYYY-MM-DD' (day it was handed over) }
+//   digestNext: 'YYYY-MM-DDTHH:MM' (when the next weekly summary notification fires) or null
+const DEFAULT_SCHEDULE = { reminders: {}, digestNext: null };
+
+export function readSchedule(storage) {
+  try {
+    const s = JSON.parse(storage.getItem(SCHEDULE) ?? '{}');
+    return { ...DEFAULT_SCHEDULE, ...s, reminders: { ...(s.reminders ?? {}) } };
+  } catch {
+    return { ...DEFAULT_SCHEDULE, reminders: {} };
+  }
+}
+
+export function writeSchedule(storage, schedule, today) {
+  // Forget reminders whose day has passed: they can no longer be handed over twice.
+  for (const id of Object.keys(schedule.reminders)) {
+    const at = id.split('|').pop();
+    if (today && at.slice(0, 10) < today) delete schedule.reminders[id];
+  }
+  guard(() => storage.setItem(SCHEDULE, JSON.stringify(schedule)));
 }
 
 /** Keep the current folder so an import can be undone. */

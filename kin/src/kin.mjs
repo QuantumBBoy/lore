@@ -6,7 +6,9 @@ import { today as runtimeToday } from '../../lore-core/src/dates.mjs';
 import { LoreError, LoreFolder } from '../../lore-core/src/folder.mjs';
 import { ACTIONS, normalizeAction } from './actions.mjs';
 import { languageOf, messages } from './messages.mjs';
-import { hasFolder, loadFolder, needsNudge, readMeta, saveFolder, writeMeta } from './store.mjs';
+import { recordCall } from './feedback.mjs';
+import { localClock } from './proactive.mjs';
+import { hasFolder, loadFolder, needsNudge, readMeta, readSchedule, saveFolder, writeMeta, writeSchedule } from './store.mjs';
 
 const truthy = (v) => v === true || ['true', 'yes', 'si', 'sí', '1'].includes(String(v).toLowerCase().trim());
 
@@ -41,6 +43,19 @@ function deviceTimeZone() {
   }
 }
 
+/** What the model sent, as it sent it (for the mistake log): the object, or the raw text. */
+function rawParams(data) {
+  let value = data;
+  for (let i = 0; i < 3 && typeof value === 'string'; i++) {
+    try {
+      value = JSON.parse(value.trim());
+    } catch {
+      return { raw: String(data).slice(0, 500) };
+    }
+  }
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : { raw: String(data).slice(0, 500) };
+}
+
 /**
  * Run one request.
  * @param {string} data the JSON string from the app
@@ -48,19 +63,44 @@ function deviceTimeZone() {
  * @returns {string} JSON for the app
  */
 export function handle(data, { storage, now = new Date() }) {
+  const call = { today: runtimeToday({ now }), lang: 'en', action: null };
+  const json = respond(data, storage, now, call);
+  // Remember this call, so the owner can say it was wrong (feedback).
+  if (call.action !== 'feedback') {
+    const out = JSON.parse(json);
+    const clock = localClock(now);
+    recordCall(storage, {
+      ts: now.toISOString(),
+      today: call.today,
+      time: `${String(Math.floor(clock.minutes / 60)).padStart(2, '0')}:${String(clock.minutes % 60).padStart(2, '0')}`,
+      lang: call.lang,
+      action: call.action,
+      params: rawParams(data),
+      result: out.result,
+      error: Boolean(out.error),
+    });
+  }
+  return json;
+}
+
+function respond(data, storage, now, call) {
   let t = messages('en');
   try {
     const input = parseInput(data);
-    const today = runtimeToday({ now });
+    const today = call.today;
     const exists = hasFolder(storage);
     const { folder, snapshot } = exists ? loadFolder(storage) : { folder: new LoreFolder(), snapshot: new Map() };
     const lang = languageOf(input.lang ?? folder.setting('language') ?? 'en');
+    call.lang = lang;
     t = messages(lang);
 
     const action = normalizeAction(input.action);
+    call.action = action ?? (typeof input.action === 'string' ? input.action : null);
     if (!action) return answer(t.unknownAction(input.action ?? '', Object.keys(ACTIONS)));
+    // "calendar" as the action means exporting dates to the calendar.
+    if (action === 'remind' && /^(calendar|calendario|ics)$/i.test(String(input.action).trim())) input.calendar = true;
     const spec = ACTIONS[action];
-    if (!exists && !spec.writes && action !== 'backup') return answer(t.noData);
+    if (!exists && !spec.writes && !spec.withoutData) return answer(t.noData);
     // A folder from a newer spec version is read, never written (spec section 13).
     if (exists && spec.writes && !folder.writable) return answer(t.unsupportedVersion(folder.version));
 
@@ -69,8 +109,11 @@ export function handle(data, { storage, now = new Date() }) {
       fresh = LoreFolder.create({ name: lang === 'es' ? 'Yo' : 'Me', language: lang, timezone: deviceTimeZone() });
     }
     const meta = readMeta(storage);
-    const ctx = { folder: fresh, today, lang, t, meta, confirm: input.confirm, includeSensitive: input.sensitive };
+    const schedule = readSchedule(storage);
+    const clock = localClock(now);
+    const ctx = { folder: fresh, today, now, clock, lang, t, meta, schedule, storage, confirm: input.confirm, includeSensitive: input.sensitive };
     const out = spec.run(ctx, input);
+    if (ctx.scheduleChanged) writeSchedule(storage, schedule, today);
 
     let text = out.text;
     if (fresh.changes > 0) {
@@ -82,7 +125,8 @@ export function handle(data, { storage, now = new Date() }) {
     if (exists || fresh.changes > 0) {
       const everyDays = Number(fresh.setting('kin.export_every_days')) || 30;
       const everyChanges = Number(fresh.setting('kin.export_every_changes')) || 20;
-      if (action !== 'backup' && needsNudge(meta, today, { everyDays, everyChanges })) {
+      // The backup panel and the summary speak about backups themselves.
+      if (action !== 'backup' && action !== 'digest' && needsNudge(meta, today, { everyDays, everyChanges })) {
         text += `\n${t.nudge}`;
         meta.lastNudge = today;
       }

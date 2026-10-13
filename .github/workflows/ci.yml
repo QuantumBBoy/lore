@@ -39,6 +39,9 @@ jobs:
       - name: Validate the built site
         run: node tools/validate-skills.mjs --site _site
 
+      - name: Replay Kin's logged mistakes (evals/cases.jsonl)
+        run: npm run evals
+
       - name: Install Chromium and WebKit (the iPhone's engine) for browser tests
         run: npx playwright install --with-deps chromium webkit
 

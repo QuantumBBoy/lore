@@ -20,16 +20,20 @@ Call `run_js` with script `index.html` and data: a JSON object with "action", "l
 - link: person, other, type. "other is person's type": partner, sibling, parent, friend, colleague.
 - delete: person, text. Without text, the whole person.
 - backup. A panel to save or restore all data.
+- digest. Summary of what is coming up. every ("cada lunes", "daily") and at ("9:00") set up a notification for it.
+- remind: person (or family, friends, partner, colleagues, everyone), before ("dos semanas"), at. Reminders before dates; before and at also change the settings. "calendar": true adds the dates to the calendar instead.
+- feedback: text. The user says the last answer was wrong ("no era eso"): their correction.
 
 ## Examples
 
 - "Ayer Marta me dijo que quiere aprender cerámica" → {"action":"capture","person":"Marta","kind":"gift_idea","text":"Quiere aprender cerámica","date":"ayer","lang":"es"}
 - "I lent Luis my drill" → {"action":"capture","person":"Luis","kind":"promise","text":"Lent him my drill","lang":"en"}
 - "Voy a ver a Javi, ¿algo pendiente?" → {"action":"brief","person":"Javi","lang":"es"}
-- "¿Qué cumpleaños hay este mes?" → {"action":"upcoming","days":"este mes","lang":"es"}
+- "Avísame dos semanas antes de los cumpleaños de mi familia" → {"action":"remind","person":"family","before":"dos semanas","lang":"es"}
 
 ## Rules
 
 - Answer briefly in the user's language from Kin's result. Do not invent facts.
 - If the result asks something (which person, add someone, confirm), ask the user. If they agree, call again with the same data plus "confirm": true.
+- For each result line starting with `run_intent`, call the `run_intent` tool with that intent and JSON, then answer.
 - Add "sensitive": true only when the user asks for sensitive details or tells you something private (health, money, relationships).

@@ -3,19 +3,20 @@
 // here, not in the model: it only picks the action and passes the user's words.
 
 import { formatShortDate, isCadence, parsePersonDate } from '../../lore-core/src/dates.mjs';
-import { matchPerson } from '../../lore-core/src/match.mjs';
 import { brief as briefQuery, giftContext, giftHistory, overdue as overdueQuery, personSummary, sameGift, upcoming as upcomingQuery } from '../../lore-core/src/queries.mjs';
 import { entryLevel, isVisible } from '../../lore-core/src/sensitivity.mjs';
 import { phrases } from '../../lore-core/src/i18n.mjs';
-import { normalizeText, truncate } from '../../lore-core/src/text.mjs';
+import { truncate } from '../../lore-core/src/text.mjs';
+import { feedback } from './feedback.mjs';
+import { digest, remind } from './proactive.mjs';
+import { cleanText, has, looksSensitive, n, opts, reply, resolvePerson, showDate } from './shared.mjs';
+
+export { looksSensitive };
 import { resolvePeriod, resolveWhen } from './when.mjs';
 
 export const KINDS = ['gift_idea', 'gift_given', 'follow_up', 'promise', 'note', 'date', 'preference', 'plan'];
 
 // ------------------------------------------------------------------------------------- helpers
-
-const n = (s) => normalizeText(s ?? '');
-const has = (text, re) => re.test(` ${n(text)} `);
 
 const KIND_ALIASES = {
   gift_idea: ['gift idea', 'gift', 'idea', 'regalo', 'idea regalo', 'idea de regalo'],
@@ -47,9 +48,7 @@ const BIRTHDAY = / (birthday|born|cumple|cumpleanos|nacio|nacimiento) /;
 const NAME_DAY = / (santo|onomastica|name day|saint) /;
 const MEMORIAL = / (fallecio|fallecimiento|murio|died|death|muerte|memorial|funeral) /;
 const ANNIVERSARY = / (aniversario|anniversary|boda|wedding|se casaron|married|novios|together) /;
-const SENSITIVE = / (cancer\w*|tumou?r\w*|chemo\w*|quimio\w*|surgery|cirugia|operacion|operar\w*|operad\w*|quirofano|hospital\w*|ingresad\w*|enferm\w*|illness|biops\w*|radioterapia|ictus|stroke|infarto|heart attack|diagnos\w*|depres\w*|ansiedad|anxiety|therap\w*|terapia|psicolog\w*|psychiatr\w*|psiquiatr\w*|medication|medicacion|embarazad\w*|pregnan\w*|abort\w*|miscarriage|divorc\w*|separad\w*|breakup|ruptura|affair|infidel\w*|debt\w*|deuda\w*|unemployed|en paro|despid\w*|fired|laid off|lawsuit|demanda|juicio|arrest\w*|detenid\w*|police|policia|rehab|adiccion|addiction) /;
 
-export const looksSensitive = (text) => has(text, SENSITIVE);
 
 const DATE_IN_TEXT = [
   /\b\d{4}-\d{2}-\d{2}\b/,
@@ -69,56 +68,7 @@ function findDateInText(text, today, lang) {
   return null;
 }
 
-function cleanText(s) {
-  return String(s ?? '').replace(/\s+/g, ' ').trim();
-}
 
-function capitalize(name) {
-  return name === name.toLowerCase() ? name.replace(/(^|[\s-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()) : name;
-}
-
-/** "12 abr" / "Apr 12", with the year ("12 abr 1990" / "Apr 12, 1990") when it is not this year. */
-function showDate(iso, ctx) {
-  const p = parsePersonDate(iso);
-  if (!p) return iso;
-  if (!p.year || String(p.year) === ctx.today.slice(0, 4)) return formatShortDate(iso, ctx.lang);
-  try {
-    return new Intl.DateTimeFormat(ctx.lang, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(p.year, p.month - 1, p.day)));
-  } catch {
-    return iso;
-  }
-}
-
-const reply = (text, extra = {}) => ({ text, ...extra });
-
-/**
- * Find who the owner means; create them only after the owner confirmed. Before writing, a match
- * that is only a near spelling ("Marte" for Marta) is a question, not a match.
- */
-const FILLER = /^(?:a|al|la|el|de|del|para|con|mi|to|for|with|my|the|about|sobre)\s+|(?:'s|’s)$/giu;
-
-function resolvePerson(ctx, query, { create = false, write = create } = {}) {
-  let q = cleanText(query);
-  if (!q) return { reply: ctx.t.needPerson };
-  let m = matchPerson(ctx.folder, q);
-  // "a Marta", "de Marta", "Marta's": try again without the filler words.
-  const bare = cleanText(q.replace(FILLER, '').replace(FILLER, ''));
-  if (m.status === 'none' && bare && bare !== q) {
-    const retry = matchPerson(ctx.folder, bare);
-    if (retry.status !== 'none') [q, m] = [bare, retry];
-  }
-  if (m.status === 'match' && (m.score >= 0.75 || !write)) return { slug: m.slug, name: m.name };
-  if (m.status === 'match') m.suggestions = [{ name: m.name }];
-  if (m.status === 'ambiguous') return { reply: ctx.t.ambiguous(q, m.candidates.map((c) => c.name)) };
-  if (create && ctx.confirm) {
-    const name = capitalize(q);
-    const slug = ctx.folder.createPerson({ name });
-    return { slug, name, created: true };
-  }
-  return { reply: ctx.t.notFound(q, m.suggestions.map((s) => s.name)) };
-}
-
-const opts = (ctx) => ({ today: ctx.today, includeSensitive: ctx.includeSensitive });
 
 /** Score entries against the owner's words: containment first, then shared words. */
 function matchEntries(entries, query) {
@@ -144,6 +94,9 @@ const isOpen = (e) => e.checked !== true && e.attrs.status !== 'cancelled';
 
 // ------------------------------------------------------------------------------------- capture
 
+/** Dates of things to do look forward ("el viernes" is the next one); the rest look back. */
+export const captureDirection = (kind) => (['follow_up', 'promise', 'plan'].includes(kind) ? 'future' : 'past');
+
 function capture(ctx, input) {
   const { t } = ctx;
   // Without a kind, keep the information as a note rather than lose it.
@@ -163,7 +116,7 @@ function capture(ctx, input) {
   let section;
   let date = ctx.today;
   let extra = '';
-  const resolved = input.date ? resolveWhen(input.date, ctx.today, { direction: ['follow_up', 'promise', 'plan'].includes(kind) ? 'future' : 'past', lang: ctx.lang }) : null;
+  const resolved = input.date ? resolveWhen(input.date, ctx.today, { direction: captureDirection(kind), lang: ctx.lang }) : null;
   if (input.date && !resolved) return reply(t.badDate(input.date));
 
   switch (kind) {
@@ -266,6 +219,8 @@ function person(ctx, input) {
 }
 
 function brief(ctx, input) {
+  // "Resumen" without a person is the summary of everything.
+  if (!cleanText(input.person)) return digest(ctx, input);
   const who = resolvePerson(ctx, input.person);
   if (who.reply) return reply(who.reply);
   const b = briefQuery(ctx.folder, who.slug, { ...opts(ctx), language: ctx.lang });
@@ -358,6 +313,9 @@ const FIELD_ALIASES = {
 };
 const FIELD_LOOKUP = new Map(Object.entries(FIELD_ALIASES).flatMap(([k, words]) => words.map((w) => [w, k])));
 
+/** The field the owner means ("cumpleaños" → birthday), or null. */
+export const normalizeField = (raw) => FIELD_LOOKUP.get(n(String(raw ?? '').replace(/_/g, ' '))) ?? null;
+
 const CADENCE_WORDS = {
   daily: '1d', diario: '1d', 'every day': '1d', 'cada dia': '1d', 'todos los dias': '1d',
   weekly: '1w', semanal: '1w', 'every week': '1w', 'cada semana': '1w', 'una vez a la semana': '1w',
@@ -384,7 +342,7 @@ const REMOVE_WORDS = new Set(['', 'none', 'nothing', 'remove', 'delete', 'ningun
 
 function update(ctx, input) {
   const { t } = ctx;
-  const field = FIELD_LOOKUP.get(n(String(input.field ?? '').replace(/_/g, ' ')));
+  const field = normalizeField(input.field);
   if (!field) return reply(t.needField);
   const who = resolvePerson(ctx, input.person, { write: true });
   if (who.reply) return reply(who.reply);
@@ -529,15 +487,21 @@ export const ACTIONS = {
   update: { run: update, writes: true },
   link: { run: link, writes: true },
   delete: { run: deleteAction, writes: true },
-  backup: { run: backup },
+  backup: { run: backup, withoutData: true },
+  digest: { run: digest },
+  remind: { run: remind },
+  feedback: { run: feedback, withoutData: true },
 };
 
 const ACTION_ALIASES = {
   capture: ['capture', 'add', 'save', 'remember', 'note', 'store', 'guardar', 'apuntar', 'anotar'],
   person: ['person', 'who', 'about', 'info', 'summary', 'profile', 'persona', 'quien'],
   brief: ['brief', 'briefing', 'prepare', 'meeting', 'before meeting', 'resumen'],
+  digest: ['digest', 'overview', 'daily', 'weekly', 'summary of everything', 'resumen general', 'resumen diario', 'resumen semanal', 'resumen de todo'],
+  feedback: ['feedback', 'wrong', 'mistake', 'error', 'correction', 'correct', 'fix', 'incorrect', 'bad answer', 'mal', 'equivocado', 'equivocada', 'error de kin', 'corregir', 'correccion', 'no era eso'],
+  remind: ['remind', 'reminder', 'reminders', 'notify', 'notification', 'notifications', 'alert', 'recordar', 'recordatorio', 'recordatorios', 'avisar', 'aviso', 'avisos', 'notificacion', 'notificaciones', 'calendar', 'calendario', 'ics'],
   gift_context: ['gift context', 'gift', 'gifts', 'gift ideas', 'regalo', 'regalos'],
-  upcoming: ['upcoming', 'birthdays', 'dates', 'agenda', 'calendar', 'proximos', 'cumpleanos'],
+  upcoming: ['upcoming', 'birthdays', 'dates', 'agenda', 'proximos', 'cumpleanos'],
   overdue: ['overdue', 'catch up', 'lost touch', 'stale', 'contacts', 'pendientes de llamar'],
   done: ['done', 'complete', 'completed', 'check', 'resolved', 'hecho', 'returned', 'devuelto'],
   update: ['update', 'edit', 'change', 'set', 'cambiar', 'actualizar'],

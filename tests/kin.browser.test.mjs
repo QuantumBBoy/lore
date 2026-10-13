@@ -131,6 +131,136 @@ for (const [label, engine] of [['chromium', chromium], ['webkit', webkit]]) {
       await context.close();
     });
 
+    test('v0.2: digest, reminders, calendar and feedback, as a model would call them', async (t) => {
+      if (!needBrowser(t)) return;
+      const context = await contextWithExample(browser);
+      const { page, requests, errors } = await openRunner(context);
+      const say = async (d) => (await kin(page, d)).result;
+      const intents = (text) => [...text.matchAll(/^run_intent schedule_notification (\{.*\})$/gm)].map((m) => JSON.parse(m[1]));
+      const nowLocal = await page.evaluate(() => {
+        const d = new Date();
+        const p = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+      });
+      const when = (p) => `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}T${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
+
+      const digest = await say({ action: 'digest', lang: 'es' });
+      assert.ok(digest.split('\n').length <= 6, digest);
+      assert.match(digest, /^(Resumen de Kin · |Nada pendiente)/);
+
+      const weekly = intents(await say({ action: 'digest', every: 'cada lunes', at: '9:00', lang: 'es' }));
+      assert.equal(weekly.length, 1);
+      assert.deepEqual(Object.keys(weekly[0]), ['title', 'message', 'hour', 'minute', 'year', 'month', 'day']);
+      assert.equal(weekly[0].message, 'Kin: dame mi resumen');
+      assert.ok(when(weekly[0]) > nowLocal, `${when(weekly[0])} is after ${nowLocal}`);
+
+      // Two dates (birthday, name day); on one of those days it may be too late for one.
+      const reminders = intents(await say({ action: 'remind', person: 'Marta', lang: 'es' }));
+      assert.ok(reminders.length >= 1 && reminders.length <= 2, String(reminders.length));
+      for (const p of reminders) {
+        assert.ok(when(p) > nowLocal, `${when(p)} is after ${nowLocal}`);
+        assert.match(p.title, /^Kin · .* de Marta Ruiz /);
+      }
+      assert.match(await say({ action: 'remind', person: 'Marta', lang: 'es' }), /^Ya te di estos recordatorios/);
+      assert.match(await say({ action: 'remind', person: 'familia', before: 'dos semanas', lang: 'es' }), /^Hecho: tu familia, 14 días antes\./);
+      assert.match(await page.evaluate(() => localStorage.getItem('lore:v1:file:me.md')), /\nkin\.lead_days:\n {2}partner: 14\n {2}family: 14\n/);
+
+      const calendar = await kin(page, { action: 'remind', calendar: true, lang: 'es' });
+      assert.deepEqual(calendar.webview, { url: 'calendar.html?lang=es', aspectRatio: 1.2 });
+
+      assert.match(await say({ action: 'feedback', text: 'No era eso', lang: 'es' }), /^Anotado, gracias \(error 1, sobre «remind»\)/);
+
+      assert.deepEqual(requests, [server.url(`${SKILL}/scripts/index.html`)], 'no network requests');
+      assert.deepEqual(errors, []);
+      await context.close();
+    });
+
+    test('calendar panel: share an .ics, record it, nothing new the second time', async (t) => {
+      if (!needBrowser(t)) return;
+      const context = await contextWithExample(browser);
+      await context.addInitScript(() => {
+        window.__shared = [];
+        navigator.share = async (data) => {
+          const f = data.files[0];
+          window.__shared.push({ name: f.name, type: f.type, text: await f.text() });
+        };
+        navigator.canShare = () => true;
+      });
+      const page = await context.newPage();
+      const errors = [];
+      const requests = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      page.on('request', (r) => requests.push(r.url()));
+      await page.goto(server.url(`${SKILL}/assets/calendar.html?lang=es`));
+      await page.locator('#stats', { hasText: '9 nuevas o cambiadas · 0 ya exportadas' }).waitFor();
+      await page.locator('#includes', { hasText: 'Incluye Carmen Moreno, Javier Moreno, Luis Ortega y 3 más.' }).waitFor();
+      await page.click('#share');
+      await page.locator('#status', { hasText: 'Listo.' }).waitFor();
+      const [shared] = await page.evaluate(() => window.__shared);
+      assert.match(shared.name, /^kin-\d{4}-\d{2}-\d{2}\.ics$/);
+      assert.equal(shared.type, 'text/calendar');
+      assert.equal(shared.text.split('BEGIN:VEVENT').length - 1, 9);
+      assert.match(shared.text, /\r\nUID:marta-ruiz\.birthday@kin\.lore\r\n/);
+      assert.match(shared.text, /\r\nRRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1\r\n/);
+
+      // Recorded in Lore; the panel and Kin now say there is nothing new.
+      await page.locator('#stats', { hasText: '0 nuevas o cambiadas · 9 ya exportadas' }).waitFor();
+      assert.equal(await page.isVisible('#share'), false);
+      assert.match(await page.evaluate(() => localStorage.getItem('lore:v1:file:people/marta-ruiz.md')), /\nkin\.calendar_birthday: 1990-04-12\n/);
+      const { page: runner } = await openRunner(context);
+      assert.match((await kin(runner, { action: 'calendar', lang: 'es' })).result, /^Todas tus fechas \(9\) ya están en el calendario\./);
+
+      // Export all again: the same events, the same UIDs.
+      await page.click('#all');
+      await page.waitForFunction(() => window.__shared.length === 2);
+      const again = (await page.evaluate(() => window.__shared))[1].text;
+      const uids = (ics) => [...ics.matchAll(/\r\nUID:(.*)\r\n/g)].map((m) => m[1]);
+      assert.deepEqual(uids(again), uids(shared.text));
+      assert.deepEqual(requests, [server.url(`${SKILL}/assets/calendar.html?lang=es`)], 'no network requests');
+      assert.deepEqual(errors, []);
+      await context.close();
+    });
+
+    test('calendar panel without file sharing says so, and records nothing', async (t) => {
+      if (!needBrowser(t)) return;
+      const context = await contextWithExample(browser);
+      await context.addInitScript(() => Object.defineProperty(navigator, 'share', { value: undefined, configurable: true }));
+      const page = await context.newPage();
+      await page.goto(server.url(`${SKILL}/assets/calendar.html?lang=en`));
+      await page.click('#share');
+      await page.locator('#status', { hasText: 'Sharing files is not available here.' }).waitFor();
+      assert.doesNotMatch(await page.evaluate(() => localStorage.getItem('lore:v1:file:people/marta-ruiz.md')), /kin\.calendar/);
+      await context.close();
+    });
+
+    test('backup panel shares the mistake log for evals', async (t) => {
+      if (!needBrowser(t)) return;
+      const context = await contextWithExample(browser);
+      await context.addInitScript(() => {
+        window.__shared = [];
+        navigator.share = async (data) => {
+          window.__shared.push({ name: data.files[0].name, text: await data.files[0].text() });
+        };
+        navigator.canShare = () => true;
+      });
+      const { page: runner } = await openRunner(context);
+      await kin(runner, { action: 'brief', person: 'Marta', lang: 'es' });
+      await kin(runner, { action: 'feedback', text: 'Quería a Javier Moreno', lang: 'es' });
+      const page = await context.newPage();
+      await page.goto(server.url(`${SKILL}/assets/backup.html?lang=es`));
+      await page.locator('#mistakes', { hasText: 'Compartir errores para evals (1)' }).waitFor();
+      await page.click('#mistakes');
+      await page.locator('#status', { hasText: 'Compartido.' }).waitFor();
+      const [shared] = await page.evaluate(() => window.__shared);
+      assert.equal(shared.name, 'cases.jsonl');
+      const c = JSON.parse(shared.text.trim());
+      assert.equal(c.action, 'brief');
+      assert.match(c.params.person, /^person_\d+$/);
+      assert.match(c.correction, /^Quería a person_\d+$/);
+      assert.ok(!/Marta|Javier|Moreno|Ruiz/.test(shared.text), shared.text);
+      await context.close();
+    });
+
     test('data survives reloading the page', async (t) => {
       if (!needBrowser(t)) return;
       const context = await browser.newContext();
@@ -141,7 +271,7 @@ for (const [label, engine] of [['chromium', chromium], ['webkit', webkit]]) {
       ({ page } = await openRunner(context));
       assert.match((await kin(page, { action: 'person', person: 'Ana', lang: 'en' })).result, /^Ana Gil\nBirthday: Mar 2/);
       const keys = await page.evaluate(() => Object.keys(localStorage).sort());
-      assert.deepEqual(keys, ['lore:v1:file:INDEX.md', 'lore:v1:file:me.md', 'lore:v1:file:people/ana-gil.md', 'lore:v1:meta']);
+      assert.deepEqual(keys, ['lore:v1:file:INDEX.md', 'lore:v1:file:me.md', 'lore:v1:file:people/ana-gil.md', 'lore:v1:last', 'lore:v1:meta']);
       await context.close();
     });
 
@@ -250,6 +380,7 @@ for (const [label, engine] of [['chromium', chromium], ['webkit', webkit]]) {
           await context.addInitScript(() => Object.defineProperty(navigator, 'share', { value: undefined, configurable: true }));
           const { page: runner } = await openRunner(context);
           const { aspectRatio } = (await kin(runner, { action: 'backup', lang })).webview;
+          await kin(runner, { action: 'feedback', text: 'x', lang }); // so "Share mistakes" shows too
           const page = await context.newPage();
           await page.setViewportSize({ width, height: Math.floor(width / aspectRatio) });
           await page.goto(server.url(`${SKILL}/assets/backup.html?lang=${lang}`));
@@ -257,6 +388,7 @@ for (const [label, engine] of [['chromium', chromium], ['webkit', webkit]]) {
             const { content, box } = await page.evaluate(() => ({ content: document.documentElement.scrollHeight, box: window.innerHeight }));
             assert.ok(content <= box, `${lang}, ${width} pt, ${state}: ${content} px of content in a ${box} px card`);
           };
+          await page.locator('#mistakes').waitFor();
           await page.click('#share'); // the longest status message
           await page.locator('#status.warn').waitFor();
           await fits('save');
@@ -272,6 +404,34 @@ for (const [label, engine] of [['chromium', chromium], ['webkit', webkit]]) {
           await page.click('#read');
           await page.locator('#status.bad').waitFor();
           await fits('error');
+          await context.close();
+        }
+      }
+    });
+
+    test('calendar panel fits the card the app gives it, without scrolling', async (t) => {
+      if (!needBrowser(t)) return;
+      for (const lang of ['es', 'en']) {
+        for (const width of [360, 375, 393, 430]) {
+          const context = await contextWithExample(browser);
+          await context.addInitScript(() => {
+            navigator.share = async () => {};
+            navigator.canShare = () => true;
+          });
+          const { page: runner } = await openRunner(context);
+          const { aspectRatio } = (await kin(runner, { action: 'remind', calendar: true, lang })).webview;
+          const page = await context.newPage();
+          await page.setViewportSize({ width, height: Math.floor(width / aspectRatio) });
+          await page.goto(server.url(`${SKILL}/assets/calendar.html?lang=${lang}`));
+          const fits = async (state) => {
+            const { content, box } = await page.evaluate(() => ({ content: document.documentElement.scrollHeight, box: window.innerHeight }));
+            assert.ok(content <= box, `${lang}, ${width} pt, ${state}: ${content} px of content in a ${box} px card`);
+          };
+          await page.locator('#share').waitFor();
+          await fits('dates to add');
+          await page.click('#share');
+          await page.locator('#status.ok').waitFor();
+          await fits('after sharing');
           await context.close();
         }
       }

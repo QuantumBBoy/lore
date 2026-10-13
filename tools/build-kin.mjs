@@ -101,6 +101,7 @@ export function bundle(entry) {
 const PAGES = [
   { template: 'kin/index.template.html', entry: 'kin/src/kin.mjs', out: 'skills/kin/scripts/index.html' },
   { template: 'kin/backup.template.html', entry: 'kin/src/backup.mjs', out: 'skills/kin/assets/backup.html' },
+  { template: 'kin/calendar.template.html', entry: 'kin/src/calendar-panel.mjs', out: 'skills/kin/assets/calendar.html' },
 ];
 
 /** Build every page. Returns [{out, html}]. */

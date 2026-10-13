@@ -11,6 +11,7 @@
   "scripts": {
     "validate": "node tools/validate-skills.mjs skills",
     "build": "node tools/build-site.mjs",
+    "evals": "node tools/replay-evals.mjs",
     "test": "node --test --test-reporter=spec \"tools/**/*.test.mjs\" \"tests/**/*.test.mjs\" \"lore-core/test/**/*.test.mjs\" \"kin/test/**/*.test.mjs\""
   },
   "devDependencies": {

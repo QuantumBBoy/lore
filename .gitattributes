@@ -5,4 +5,5 @@
 # Built by tools/build-kin.mjs from kin/ and lore-core/; collapsed in GitHub diffs.
 skills/kin/scripts/index.html linguist-generated=true
 skills/kin/assets/backup.html linguist-generated=true
+skills/kin/assets/calendar.html linguist-generated=true
 lore-core/src/schemas.generated.mjs linguist-generated=true
