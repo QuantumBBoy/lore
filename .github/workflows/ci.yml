@@ -30,6 +30,9 @@ jobs:
       - name: Validate skills (strict SKILL.md rules)
         run: npm run validate
 
+      - name: Check the generated Kin pages are up to date
+        run: node tools/build-kin.mjs --check
+
       - name: Build the Pages site
         run: npm run build
 
