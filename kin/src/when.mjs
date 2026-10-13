@@ -1,7 +1,7 @@
 // Turn the user's words for a date ("ayer", "last Friday", "12 de abril", "2026-03-14") into a
 // Lore date. "Today" always comes from the caller (the runtime clock), never from the model.
 
-import { addDays, formatIso, parsePersonDate } from '../../lore-core/src/dates.mjs';
+import { addDays, addMonths, daysBetween, formatIso, parsePersonDate } from '../../lore-core/src/dates.mjs';
 import { foldAccents } from '../../lore-core/src/text.mjs';
 
 const MONTHS = {
@@ -120,4 +120,59 @@ export function resolveWhen(input, today, { direction = 'past', lang = 'en' } = 
   }
   const thisYear = validFull(y, month, day);
   return thisYear && thisYear <= today ? thisYear : validFull(y - 1, month, day) ?? validFull(y - 1 - ((y - 1) % 4), month, day);
+}
+
+const PERIOD_NUMBERS = {
+  ...NUMBER_WORDS,
+  six: 6, seis: 6, seven: 7, siete: 7, eight: 8, ocho: 8, nine: 9, nueve: 9, ten: 10, diez: 10,
+  eleven: 11, once: 11, twelve: 12, doce: 12, 'a couple of': 2, couple: 2, 'un par de': 2,
+};
+const PERIOD_NUMBER = Object.keys(PERIOD_NUMBERS).sort((a, b) => b.length - a.length).join('|');
+// Unit words, and whether they are plural ("los proximos meses" means a few months).
+const PERIOD_UNITS = {
+  day: ['d', false], days: ['d', true], dia: ['d', false], dias: ['d', true],
+  week: ['w', false], weeks: ['w', true], semana: ['w', false], semanas: ['w', true],
+  month: ['m', false], months: ['m', true], mes: ['m', false], meses: ['m', true],
+  year: ['y', false], years: ['y', true], ano: ['y', false], anos: ['y', true],
+};
+const PERIOD_UNIT = Object.keys(PERIOD_UNITS).join('|');
+const AMOUNT = new RegExp(`(?:^| )(\\d+|${PERIOD_NUMBER}) (${PERIOD_UNIT})(?: |$)`);
+const CALENDAR = new RegExp(`(?:^| )(?:(this|esta|este|next|proxima|proximo) )?(${PERIOD_UNIT})(?: (que viene|siguiente))?(?: |$)`);
+
+/**
+ * How many days ahead the user means by "this month", "los proximos 3 meses", "next year" or "14".
+ * The model passes the user's words, so it never has to count days itself.
+ * @param {string|number} input
+ * @param {string} today YYYY-MM-DD from the runtime clock
+ * @returns {number|null} days from today; null when it cannot be understood
+ */
+export function resolvePeriod(input, today) {
+  if (input === undefined || input === null) return null;
+  if (typeof input === 'number') return Number.isFinite(input) && input >= 0 ? Math.round(input) : null;
+  const s = foldAccents(String(input)).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/^\d+$/.test(s)) return Number(s);
+  if (s === 'today' || s === 'hoy') return 0;
+  const ahead = (n, unit) => {
+    if (unit === 'd') return n;
+    if (unit === 'w') return 7 * n;
+    return daysBetween(today, addMonths(today, unit === 'm' ? n : 12 * n));
+  };
+
+  // "3 months", "los proximos 12 meses", "a couple of weeks", "un par de semanas"
+  let m = AMOUNT.exec(s);
+  if (m) return ahead(/^\d+$/.test(m[1]) ? Number(m[1]) : PERIOD_NUMBERS[m[1]], PERIOD_UNITS[m[2]][0]);
+
+  m = CALENDAR.exec(s);
+  if (!m) return null;
+  const [unit, plural] = PERIOD_UNITS[m[2]];
+  if (plural) return ahead(unit === 'd' ? 7 : 3, unit); // "the coming weeks", "los proximos meses"
+  const next = ['next', 'proxima', 'proximo'].includes(m[1]) || Boolean(m[3]);
+  if (!next && !m[1]) return ahead(1, unit); // "a month", "un ano"
+  // This or next week (weeks end on Sunday), month or year: up to its last day.
+  const shift = next ? 1 : 0;
+  if (unit === 'd') return shift;
+  if (unit === 'w') return ((7 - weekdayOf(today)) % 7) + 7 * shift;
+  const [y, mo] = [Number(today.slice(0, 4)), Number(today.slice(5, 7))];
+  if (unit === 'm') return daysBetween(today, addDays(addMonths(formatIso(y, mo, 1), shift + 1), -1));
+  return daysBetween(today, formatIso(y + shift, 12, 31));
 }

@@ -8,7 +8,7 @@ import { brief as briefQuery, giftContext, giftHistory, overdue as overdueQuery,
 import { entryLevel, isVisible } from '../../lore-core/src/sensitivity.mjs';
 import { phrases } from '../../lore-core/src/i18n.mjs';
 import { normalizeText, truncate } from '../../lore-core/src/text.mjs';
-import { resolveWhen } from './when.mjs';
+import { resolvePeriod, resolveWhen } from './when.mjs';
 
 export const KINDS = ['gift_idea', 'gift_given', 'follow_up', 'promise', 'note', 'date', 'preference', 'plan'];
 
@@ -293,7 +293,8 @@ const MAX_LIST = 8;
 
 function upcoming(ctx, input) {
   const { t } = ctx;
-  const days = Math.min(366, Math.max(1, Number.parseInt(input.days, 10) || 30));
+  // days is usually the user's words ("este mes", "next 3 months"); 30 when missing or unclear.
+  const days = Math.min(366, resolvePeriod(input.days ?? input.period ?? input.when, ctx.today) ?? 30);
   const r = upcomingQuery(ctx.folder, { ...opts(ctx), days });
   const lines = r.items.slice(0, MAX_LIST).map((i) => {
     const when = t.inDays(i.daysAway);

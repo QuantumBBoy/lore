@@ -186,6 +186,10 @@ describe('reading', () => {
   test('upcoming and overdue', () => {
     assert.equal(say({ action: 'upcoming', lang: 'es' }), 'Noor Haddad: cumpleaños en 7 días (20 oct)\nLuis Ortega: cumpleaños en 21 días (3 nov)');
     assert.equal(say({ action: 'upcoming', days: 3, lang: 'en' }), 'Nothing in the next 3 days.');
+    // The model passes the user's words for the period and Kin counts the days.
+    assert.equal(say({ action: 'upcoming', days: 'este mes', lang: 'es' }), 'Noor Haddad: cumpleaños en 7 días (20 oct)');
+    assert.match(say({ action: 'upcoming', days: 'los próximos 12 meses', lang: 'es' }), /Marta Ruiz: cumpleaños en 181 días \(12 abr, cumple 37\)/);
+    assert.equal(say({ action: 'upcoming', days: 'pronto', lang: 'es' }), say({ action: 'upcoming', lang: 'es' }));
     assert.equal(
       say({ action: 'overdue', lang: 'en' }),
       [

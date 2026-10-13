@@ -7,33 +7,29 @@ metadata:
 
 # Kin
 
-Kin keeps notes about people on this phone. The script does all the work: you choose the action and pass the user's words.
+Call `run_js` with script `index.html` and data: a JSON object with "action", "lang" (the language of the user's message: "es", "en") and the fields below. Copy names, dates and periods as the user says them ("ayer", "12 de abril", "next 3 months"); never work out dates.
 
-## How to call
-
-Call `run_js` with script name `index.html` and data: a JSON object with "action", "lang" (the language of the user's message, like "es" or "en") and the fields below. Use names as the user says them. Pass dates as the user's words ("ayer", "next Friday", "12 April"); never work out dates yourself.
-
-- capture: person, kind, text, date. The user tells you something about someone. kind is one of gift_idea, gift_given, follow_up (something to ask later), promise (also things lent or borrowed), note (what happened), date (birthday, anniversary, name day), preference (likes, sizes, diet), plan.
+- capture: person, kind, text, date. kind: gift_idea, gift_given, follow_up (ask later), promise (also lent or borrowed), note (what happened), date (birthday, anniversary, name day), preference (likes, sizes, diet), plan.
 - person: person. What Kin knows about someone.
 - brief: person. Before meeting someone.
-- gift_context: person, budget. Then suggest 3 gift ideas based on it, never one already given.
-- upcoming: days. Birthdays and dates coming up.
-- overdue. People the user has not talked to for a while.
+- gift_context: person, budget. Then suggest 3 gifts from it, never one already given.
+- upcoming: days (the user's words, like "este mes"). Birthdays and dates coming up.
+- overdue. Who the user has not talked to for a while.
 - done: person, text. Something asked, returned or kept.
-- update: person, field, value. field is name, nickname, relationship, birthday, pronouns, cadence (how often to keep in touch) or last_contact.
-- link: person, other, type. "other is person's type", for example partner, sibling, parent, friend, colleague.
-- delete: person, text. Removes a note; without text, the whole person.
-- backup. Shows a panel to save or restore all data.
+- update: person, field, value. field: name, nickname, relationship, birthday, pronouns, cadence (how often to keep in touch), last_contact.
+- link: person, other, type. "other is person's type": partner, sibling, parent, friend, colleague.
+- delete: person, text. Without text, the whole person.
+- backup. A panel to save or restore all data.
 
 ## Examples
 
-- "Ayer Marta me dijo que quiere aprender cerámica" → {"action": "capture", "person": "Marta", "kind": "gift_idea", "text": "Quiere aprender cerámica", "date": "ayer", "lang": "es"}
-- "I lent Luis my drill" → {"action": "capture", "person": "Luis", "kind": "promise", "text": "Lent him my drill", "lang": "en"}
-- "¿Qué le regalo a Marta? Unos 50 euros" → {"action": "gift_context", "person": "Marta", "budget": "50 euros", "lang": "es"}
-- "Voy a ver a Javi, ¿algo pendiente?" → {"action": "brief", "person": "Javi", "lang": "es"}
+- "Ayer Marta me dijo que quiere aprender cerámica" → {"action":"capture","person":"Marta","kind":"gift_idea","text":"Quiere aprender cerámica","date":"ayer","lang":"es"}
+- "I lent Luis my drill" → {"action":"capture","person":"Luis","kind":"promise","text":"Lent him my drill","lang":"en"}
+- "Voy a ver a Javi, ¿algo pendiente?" → {"action":"brief","person":"Javi","lang":"es"}
+- "¿Qué cumpleaños hay este mes?" → {"action":"upcoming","days":"este mes","lang":"es"}
 
 ## Rules
 
-- Answer briefly in the user's language, using Kin's result. Do not invent facts.
-- If the result asks a question (which person, add someone new, confirm a change or a deletion), ask the user. If they agree, call again with the same data plus "confirm": true.
-- Add "sensitive": true only when the user explicitly asks for sensitive details, or when what they tell you is private (health, money, relationships).
+- Answer briefly in the user's language from Kin's result. Do not invent facts.
+- If the result asks something (which person, add someone, confirm), ask the user. If they agree, call again with the same data plus "confirm": true.
+- Add "sensitive": true only when the user asks for sensitive details or tells you something private (health, money, relationships).

@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, test } from 'node:test';
-import { resolveWhen } from '../src/when.mjs';
+import { resolvePeriod, resolveWhen } from '../src/when.mjs';
 
 const TODAY = '2026-10-14'; // a Wednesday
 const w = (s, o) => resolveWhen(s, TODAY, o);
@@ -69,4 +69,16 @@ test('Lore formats pass through; nonsense is null', () => {
   assert.equal(w('someday'), null);
   assert.equal(w(''), null);
   assert.equal(w(undefined), null);
+});
+
+describe("periods for upcoming, in the user's words", () => {
+  const cases = [
+    [14, 14], ['14', 14], ['hoy', 0],
+    ['12 meses', 365], ['los próximos 3 meses', 92], ['in the next two weeks', 14], ['un par de semanas', 14], ['a year', 365],
+    ['esta semana', 4], ['next week', 11], ['este mes', 17], ['this month', 17], ['el mes que viene', 47], ['next month', 47],
+    ['este año', 78], ['next year', 443],
+    ['los próximos meses', 92], ['the coming weeks', 21], ['un mes', 31],
+    ['pronto', null], ['', null], [undefined, null],
+  ];
+  for (const [input, expected] of cases) test(`${JSON.stringify(input)} → ${expected}`, () => assert.equal(resolvePeriod(input, TODAY), expected));
 });
