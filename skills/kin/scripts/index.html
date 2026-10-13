@@ -3236,11 +3236,15 @@ function deleteAction(ctx, input) {
   return reply(t.deletedEntry(who.name, truncate(entry.text, 80)));
 }
 
+// The app shows the panel full width, with height = width / aspectRatio. The panel is laid out to
+// fit that box on iPhone widths without scrolling (checked in tests/kin.browser.test.mjs).
+const BACKUP_ASPECT_RATIO = 0.95;
+
 function backup(ctx) {
   const people = ctx.folder.slugs().length;
   const last = ctx.meta.lastExport ? showDate(ctx.meta.lastExport, ctx) : null;
   return reply(ctx.t.backup(people, last), {
-    webview: { url: `backup.html?lang=${ctx.lang}`, aspectRatio: 0.62 },
+    webview: { url: `backup.html?lang=${ctx.lang}`, aspectRatio: BACKUP_ASPECT_RATIO },
   });
 }
 
@@ -3275,7 +3279,7 @@ const ACTION_ALIASES = {
 const ACTION_LOOKUP = new Map(Object.entries(ACTION_ALIASES).flatMap(([k, words]) => words.map((w) => [w, k])));
 
 const normalizeAction = (raw) => ACTION_LOOKUP.get(n(String(raw ?? '').replace(/_/g, ' '))) ?? null;
-return { KINDS, normalizeKind, looksSensitive, parseCadence, parseLinkType, ACTIONS, normalizeAction };
+return { KINDS, normalizeKind, looksSensitive, parseCadence, parseLinkType, BACKUP_ASPECT_RATIO, ACTIONS, normalizeAction };
 })();
 
 // kin/src/messages.mjs

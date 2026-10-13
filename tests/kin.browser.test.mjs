@@ -117,7 +117,7 @@ for (const [label, engine] of [['chromium', chromium], ['webkit', webkit]]) {
 
       // backup opens the panel
       const backup = await kin(page, { action: 'backup', lang: 'es' });
-      assert.deepEqual(backup.webview, { url: 'backup.html?lang=es', aspectRatio: 0.62 });
+      assert.deepEqual(backup.webview, { url: 'backup.html?lang=es', aspectRatio: 0.95 });
 
       // errors
       assert.match(await say({ action: 'teleport', lang: 'en' }), /^Unknown action "teleport"/);
@@ -182,6 +182,7 @@ for (const [label, engine] of [['chromium', chromium], ['webkit', webkit]]) {
       // Import a zip with one more person: preview, then merge (two taps)
       const folder = readFolder(join(ROOT, 'examples', 'lore'));
       folder.createPerson({ name: 'Ana Gil', relationship: 'neighbor' });
+      await page.click('#tabRestore');
       await page.setInputFiles('#pick', { name: 'lore-backup.zip', mimeType: 'application/zip', buffer: Buffer.from(exportArchive(folder)) });
       await page.locator('#planText', { hasText: 'Esta copia tiene 7 personas: 1 archivo nuevo, 0 cambiados, 0 solo en este teléfono.' }).waitFor();
       await page.click('#merge');
@@ -211,7 +212,15 @@ for (const [label, engine] of [['chromium', chromium], ['webkit', webkit]]) {
       // Not a backup
       await page.fill('#paste', 'hello');
       await page.click('#read');
-      await page.locator('#status', { hasText: 'No ha funcionado: This is not a Kin backup.' }).waitFor();
+      await page.locator('#status', { hasText: 'Esto no es una copia de Kin, o está dañada.' }).waitFor();
+
+      // Cancel a pending import: the file and paste controls come back
+      await page.setInputFiles('#pick', { name: 'lore-backup.zip', mimeType: 'application/zip', buffer: Buffer.from(exportArchive(folder)) });
+      await page.locator('#plan').waitFor();
+      assert.equal(await page.isVisible('#paste'), false);
+      await page.click('#cancel');
+      await page.locator('#paste').waitFor();
+      assert.equal(await page.isVisible('#plan'), false);
       assert.deepEqual(errors, []);
       await context.close();
     });
@@ -227,6 +236,45 @@ for (const [label, engine] of [['chromium', chromium], ['webkit', webkit]]) {
       await page.click('#share');
       await page.locator('#status', { hasText: 'Sharing files is not available here; use "Copy as text".' }).waitFor();
       await context.close();
+    });
+
+    test('backup panel fits the card the app gives it, in every state, without scrolling', async (t) => {
+      if (!needBrowser(t)) return;
+      const folder = readFolder(join(ROOT, 'examples', 'lore'));
+      folder.createPerson({ name: 'Ana Gil' });
+      const zip = { name: 'lore-backup.zip', mimeType: 'application/zip', buffer: Buffer.from(exportArchive(folder)) };
+      for (const lang of ['es', 'en']) {
+        // iPhone widths in points; the app makes the card as wide as the screen.
+        for (const width of [360, 375, 393, 430]) {
+          const context = await contextWithExample(browser);
+          await context.addInitScript(() => Object.defineProperty(navigator, 'share', { value: undefined, configurable: true }));
+          const { page: runner } = await openRunner(context);
+          const { aspectRatio } = (await kin(runner, { action: 'backup', lang })).webview;
+          const page = await context.newPage();
+          await page.setViewportSize({ width, height: Math.floor(width / aspectRatio) });
+          await page.goto(server.url(`${SKILL}/assets/backup.html?lang=${lang}`));
+          const fits = async (state) => {
+            const { content, box } = await page.evaluate(() => ({ content: document.documentElement.scrollHeight, box: window.innerHeight }));
+            assert.ok(content <= box, `${lang}, ${width} pt, ${state}: ${content} px of content in a ${box} px card`);
+          };
+          await page.click('#share'); // the longest status message
+          await page.locator('#status.warn').waitFor();
+          await fits('save');
+          await page.click('#tabRestore');
+          await page.setInputFiles('#pick', zip);
+          await page.locator('#plan').waitFor();
+          await fits('import preview');
+          await page.click('#merge');
+          await page.click('#merge');
+          await page.locator('#undo').waitFor();
+          await fits('after import, with undo');
+          await page.fill('#paste', 'hello');
+          await page.click('#read');
+          await page.locator('#status.bad').waitFor();
+          await fits('error');
+          await context.close();
+        }
+      }
     });
   });
 }

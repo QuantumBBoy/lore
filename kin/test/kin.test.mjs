@@ -271,7 +271,7 @@ describe('backup and reminders', () => {
   test('backup opens the panel in the user language', () => {
     const r = call({ action: 'backup', lang: 'es' });
     assert.equal(r.result, 'Aquí tienes el panel de copia de seguridad. 6 personas guardadas; aún sin copia.');
-    assert.deepEqual(r.webview, { url: 'backup.html?lang=es', aspectRatio: 0.62 });
+    assert.deepEqual(r.webview, { url: 'backup.html?lang=es', aspectRatio: 0.95 });
   });
 
   test('reminds to back up after 20 changes, once a day', () => {
