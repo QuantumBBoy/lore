@@ -25,6 +25,6 @@ work in the app's webview. The backup panel can work on the same data as the run
 - Long gap: read again after 8+ days without using the skill (Safari's 7-day rule for
   script-written storage; unclear whether it applies inside apps).
 - IndexedDB, Cache API, OPFS and cookie results (not needed while localStorage works).
-- File picker in the inline webview (import). Tested with the Kin backup panel in Phase 4; pasting
-  text is the fallback.
+- ~~File picker in the inline webview (import).~~ Works: tested with the Kin backup panel in
+  Phase 4 ([results](../kin/RESULTS.md)).
 - "Import local skill" path.
