@@ -16,11 +16,12 @@ haven't talked to in a while. Nothing leaves the device.
   [JSON Schemas](spec/schemas/) and a fictional [example folder](examples/lore/) go with it.
 - **Phase 3, lore-core: done.** A dependency-free JavaScript library that reads, edits, validates
   and queries Lore folders ([lore-core/README.md](lore-core/README.md)).
+- **Phase 4, Kin: ready for phone testing** ([test script](docs/kin/PHONE-TEST.md)).
 
 Skill URL for the app ("Load skill from URL"):
 
 ```
-https://quantumbboy.github.io/lore/skills/kin-spike
+https://quantumbboy.github.io/lore/skills/kin
 ```
 
 ## Repository layout
@@ -30,10 +31,12 @@ https://quantumbboy.github.io/lore/skills/kin-spike
 | `spec/` | The Lore specification and its JSON Schemas. |
 | `examples/lore/` | A complete example Lore folder. Everyone in it is fictional. |
 | `lore-core/` | The JavaScript library for Lore folders, with its tests. |
-| `skills/<name>/` | Gallery skills, served from GitHub Pages. |
+| `kin/` | Kin's source: actions, storage, backup panel, page templates and tests. |
+| `skills/<name>/` | Gallery skills, served from GitHub Pages: `kin`, and `kin-spike` (the Phase 1 storage test). |
 | `tools/validate-skills.mjs` | Strict `SKILL.md` validator. It mirrors the app's parser, which is much stricter than YAML. |
 | `tools/build-site.mjs` | Builds the Pages site in `_site/`: skills, and the spec under `spec/<version>/`. |
 | `tools/gen-schemas.mjs` | Embeds the JSON Schemas into lore-core. |
+| `tools/build-kin.mjs` | Bundles lore-core and Kin into the skill's two pages (no external scripts). |
 | `tests/` | Spec consistency tests, headless-browser tests that call each skill like the app does, and a static privacy scan. |
 | `.github/workflows/` | CI on every push; deploy to GitHub Pages from `main`. |
 
@@ -45,6 +48,7 @@ Requires Node.js 22+.
 npm ci
 npx playwright install chromium webkit   # once, for the browser tests
 npm run validate                  # check every SKILL.md
+node tools/build-kin.mjs          # rebuild skills/kin pages after editing kin/ or lore-core/
 npm run build                     # build _site/
 npm test                          # unit, privacy and browser tests
 ```
