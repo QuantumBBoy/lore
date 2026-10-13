@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2026 The Lore authors. SPDX-License-Identifier: Apache-2.0
+
+  kin-spike hidden runner. The Gallery app loads this page in a hidden webview and calls
+  window.ai_edge_gallery_get_result(data). Every "write" saves the same entry to each storage
+  API the webview offers, so one test on the phone shows which of them survive an app restart.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>kin-spike</title>
+</head>
+<body>
+<script>
+'use strict';
+
+/* shared-storage:start (keep identical in scripts/index.html and assets/probe.html) */
+const SpikeStorage = (() => {
+  const KEY = 'lore:spike:entries';
+  const DB_NAME = 'lore:spike';
+  const DB_STORE = 'kv';
+  const CACHE_NAME = 'lore:spike';
+  const OPFS_FILE = 'lore-spike-entries.json';
+  const COOKIE = 'lore_spike';
+  const COOKIE_KEEP = 5;
+  const MAX_ENTRIES = 50;
+  const TIMEOUT_MS = 3000;
+
+  const isHttp = () => location.protocol === 'https:' || location.protocol === 'http:';
+  const asList = (x) => (Array.isArray(x) ? x : []);
+  const withTimeout = (promise) =>
+    Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), TIMEOUT_MS))]);
+  const done = (req) =>
+    new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  const describe = (e) =>
+    String((e && e.name && e.name !== 'Error' ? e.name + ': ' : '') + ((e && e.message) || e)).slice(0, 80);
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmt = (ms) => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const zone = () => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown zone'; } catch { return 'unknown zone'; }
+  };
+
+  function openDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+      req.onblocked = () => reject(new Error('blocked'));
+    });
+  }
+
+  const cacheRequest = () => new Request(new URL('/__lore_spike__/entries.json', location.origin).href);
+
+  function readCookie() {
+    const hit = document.cookie.split('; ').find((c) => c.startsWith(COOKIE + '='));
+    return hit ? JSON.parse(decodeURIComponent(hit.slice(COOKIE.length + 1))) : [];
+  }
+
+  const backends = [
+    {
+      name: 'localStorage',
+      available: () => { try { return !!window.localStorage; } catch { return false; } },
+      read: async () => asList(JSON.parse(localStorage.getItem(KEY) || '[]')),
+      write: async (list) => localStorage.setItem(KEY, JSON.stringify(list)),
+    },
+    {
+      name: 'IndexedDB',
+      available: () => { try { return !!window.indexedDB; } catch { return false; } },
+      read: async () => {
+        const db = await openDb();
+        try { return asList(await done(db.transaction(DB_STORE).objectStore(DB_STORE).get(KEY))); } finally { db.close(); }
+      },
+      write: async (list) => {
+        const db = await openDb();
+        try {
+          const tx = db.transaction(DB_STORE, 'readwrite');
+          tx.objectStore(DB_STORE).put(list, KEY);
+          await new Promise((resolve, reject) => {
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error || new Error('aborted'));
+          });
+        } finally { db.close(); }
+      },
+    },
+    {
+      name: 'Cache API',
+      available: () => isHttp() && typeof caches !== 'undefined',
+      read: async () => {
+        const res = await (await caches.open(CACHE_NAME)).match(cacheRequest());
+        return res ? asList(await res.json()) : [];
+      },
+      write: async (list) => {
+        const body = new Response(JSON.stringify(list), { headers: { 'Content-Type': 'application/json' } });
+        await (await caches.open(CACHE_NAME)).put(cacheRequest(), body);
+      },
+    },
+    {
+      name: 'OPFS',
+      available: () => !!(navigator.storage && navigator.storage.getDirectory),
+      read: async () => {
+        const dir = await navigator.storage.getDirectory();
+        let handle;
+        try { handle = await dir.getFileHandle(OPFS_FILE); } catch (e) { if (e && e.name === 'NotFoundError') return []; throw e; }
+        const text = await (await handle.getFile()).text();
+        return text ? asList(JSON.parse(text)) : [];
+      },
+      write: async (list) => {
+        const dir = await navigator.storage.getDirectory();
+        const handle = await dir.getFileHandle(OPFS_FILE, { create: true });
+        if (!handle.createWritable) throw new Error('no createWritable');
+        const w = await handle.createWritable();
+        await w.write(JSON.stringify(list));
+        await w.close();
+      },
+    },
+    {
+      name: 'cookie',
+      available: () => isHttp() && navigator.cookieEnabled,
+      read: async () => asList(readCookie()),
+      write: async (list) => {
+        const value = encodeURIComponent(JSON.stringify(list.slice(-COOKIE_KEEP)));
+        const secure = location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = `${COOKIE}=${value}; Max-Age=31536000; Path=/; SameSite=Strict${secure}`;
+        if (!document.cookie.includes(COOKIE + '=')) throw new Error('not stored');
+      },
+    },
+  ];
+
+  async function readOne(b) {
+    if (!b.available()) return { status: 'unavailable' };
+    try { return { status: 'ok', entries: await withTimeout(b.read()) }; } catch (e) { return { status: 'error', error: describe(e) }; }
+  }
+
+  async function appendOne(b, entry) {
+    if (!b.available()) return { status: 'unavailable' };
+    try {
+      let list = [];
+      try { list = await withTimeout(b.read()); } catch { list = []; }
+      await withTimeout(b.write([...list, entry].slice(-MAX_ENTRIES)));
+      const after = await withTimeout(b.read());
+      if (!after.some((x) => x.t === entry.t && x.v === entry.v)) return { status: 'error', error: 'not visible after write' };
+      return { status: 'ok', entries: after };
+    } catch (e) {
+      return { status: 'error', error: describe(e) };
+    }
+  }
+
+  const collect = async (fn) => {
+    const results = await Promise.all(backends.map(fn));
+    return Object.fromEntries(backends.map((b, i) => [b.name, results[i]]));
+  };
+
+  async function storageInfo() {
+    const info = { persisted: 'n/a', usage: null };
+    try {
+      if (navigator.storage && navigator.storage.persisted) info.persisted = (await withTimeout(navigator.storage.persisted())) ? 'yes' : 'no';
+    } catch { info.persisted = 'error'; }
+    try {
+      if (navigator.storage && navigator.storage.estimate) info.usage = (await withTimeout(navigator.storage.estimate())).usage;
+    } catch { /* not supported */ }
+    return info;
+  }
+
+  async function requestPersist() {
+    try {
+      if (navigator.storage && navigator.storage.persist) return (await withTimeout(navigator.storage.persist())) ? 'granted' : 'denied';
+    } catch (e) { return 'error: ' + describe(e); }
+    return 'n/a';
+  }
+
+  return {
+    readAll: () => collect((b) => readOne(b)),
+    appendAll: (entry) => collect((b) => appendOne(b, entry)),
+    storageInfo, requestPersist, describe, fmt, zone,
+  };
+})();
+/* shared-storage:end */
+
+const page = { id: Math.random().toString(36).slice(2, 8), loadedAt: Date.now(), calls: 0 };
+const MAX_VALUE = 120;
+const { fmt, zone } = SpikeStorage;
+
+const ACTION_ALIASES = {
+  write: 'write', save: 'write', store: 'write', set: 'write', add: 'write', put: 'write',
+  read: 'read', get: 'read', show: 'read', list: 'read', load: 'read', check: 'read',
+};
+const aliasOf = (word) => (Object.prototype.hasOwnProperty.call(ACTION_ALIASES, word) ? ACTION_ALIASES[word] : null);
+
+// Small models sometimes send plain text or double-encoded JSON instead of the documented object.
+function parseInput(raw) {
+  let input = raw;
+  for (let i = 0; i < 3 && typeof input === 'string'; i++) {
+    const s = input.trim();
+    if (!s) { input = {}; break; }
+    try {
+      input = JSON.parse(s);
+    } catch {
+      if (/^[[{"]/.test(s)) throw new Error('data is not valid JSON');
+      const m = /^(?:spike\s+)?([a-z]+)\b\s*([\s\S]*)$/i.exec(s);
+      input = m && aliasOf(m[1].toLowerCase()) ? { action: m[1], value: m[2] } : { value: s };
+    }
+  }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) input = {};
+  const rawAction = String(input.action ?? '').trim().toLowerCase();
+  const value = String(input.value ?? input.text ?? '').trim();
+  const action = rawAction ? aliasOf(rawAction) || rawAction : value ? 'write' : 'read';
+  return { action, value };
+}
+
+// "16:40" for today, "2026-10-12 16:40" otherwise: keeps the lines short for the model to repeat.
+const when = (ms) => (fmt(ms).slice(0, 10) === fmt(Date.now()).slice(0, 10) ? fmt(ms).slice(11) : fmt(ms));
+
+function describeBackend(name, r) {
+  if (r.status === 'unavailable') return `${name}: unavailable`;
+  if (r.status === 'error') return `${name}: error (${r.error})`;
+  const n = r.entries.length;
+  if (!n) return `${name}: EMPTY`;
+  const first = r.entries[0];
+  const last = r.entries[n - 1];
+  return `${name}: ${n} saved (first ${when(first.t)}), last "${last.v}" ${when(last.t)}`;
+}
+
+async function write(value) {
+  const entry = { v: value.slice(0, MAX_VALUE) || 'ping', t: Date.now(), p: page.id };
+  const results = await SpikeStorage.appendAll(entry);
+  const persist = await SpikeStorage.requestPersist();
+  const okNames = Object.keys(results).filter((k) => results[k].status === 'ok');
+  console.log('[kin-spike] write', JSON.stringify(results), 'persist:', persist);
+  if (okNames.length === 0) {
+    const why = Object.entries(results).map(([k, r]) => `${k}: ${r.error || r.status}`).join('; ');
+    throw new Error(`nothing could be saved (${why})`);
+  }
+  const marks = Object.entries(results)
+    .map(([k, r]) => (r.status === 'ok' ? `${k} ✓` : `${k} ✗ (${r.error || r.status})`))
+    .join(' · ');
+  const total = Math.max(...okNames.map((k) => results[k].entries.length));
+  return {
+    result: [
+      `Saved "${entry.v}" at ${fmt(entry.t)} (${zone()}).`,
+      marks,
+      `Total saved: ${total}. Next: close the app completely, reopen it, then say "spike read".`,
+    ].join('\n'),
+  };
+}
+
+async function read() {
+  const results = await SpikeStorage.readAll();
+  const info = await SpikeStorage.storageInfo();
+  const now = Date.now();
+  const lines = [`Kin spike read, ${fmt(now)} (${zone()})`];
+  for (const [name, r] of Object.entries(results)) lines.push(describeBackend(name, r));
+  const usage = info.usage == null ? 'n/a' : `${Math.round(info.usage / 1024)} KB`;
+  lines.push(`Origin ${location.origin || location.protocol}, persisted ${info.persisted}, used ${usage}`);
+  lines.push(`Runner page loaded ${new Date(page.loadedAt).toTimeString().slice(0, 8)}, call ${page.calls}.`);
+  console.log('[kin-spike] read', JSON.stringify(results));
+
+  // Counts as the runner saw them; the inline webview compares them with what it can see.
+  const seen = Object.fromEntries(
+    Object.entries(results).map(([k, r]) => [k, r.status === 'ok' ? r.entries.length : -1]),
+  );
+  const handoff = encodeURIComponent(JSON.stringify({ t: now, o: location.origin, c: seen }));
+  return {
+    result: lines.join('\n'),
+    webview: { url: `probe.html?r=${handoff}`, aspectRatio: 0.55 },
+  };
+}
+
+window['ai_edge_gallery_get_result'] = async (data) => {
+  page.calls++;
+  try {
+    const { action, value } = parseInput(data);
+    let response;
+    if (action === 'write') response = await write(value);
+    else if (action === 'read') response = await read();
+    else throw new Error(`unknown action "${action}". Use "write" or "read".`);
+    return JSON.stringify(response);
+  } catch (e) {
+    console.error('[kin-spike]', e);
+    // The Android app only reports a failure when "error" comes with "result"; an error-only
+    // object is passed to the model as a raw JSON string. Send both.
+    const message = `Kin spike error: ${SpikeStorage.describe(e)}`;
+    return JSON.stringify({ result: message, error: message });
+  }
+};
+</script>
+</body>
+</html>

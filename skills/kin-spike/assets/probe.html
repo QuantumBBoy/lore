@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2026 The Lore authors. SPDX-License-Identifier: Apache-2.0
+
+  kin-spike inline webview, shown in the chat after "spike read". It answers two questions
+  for the Kin design: does the chat webview see the same storage as the hidden runner, and
+  can a webview on this phone hand a file to the user (export) and take one back (import)?
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Kin spike check</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7;
+    --ok: #1a7f37; --bad: #c62828; --accent: #0a66c2; --button: #f2f2f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #38383a;
+      --ok: #4ade80; --bad: #f87171; --accent: #60a5fa; --button: #1c1c1e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 20px 0 8px; }
+  p { margin: 4px 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .verdict { font-weight: 600; font-size: 16px; margin: 10px 0; }
+  .ok { color: var(--ok); }
+  .bad { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  button, .file {
+    min-height: 44px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--button); color: var(--fg); font: inherit; text-align: center;
+  }
+  .file { grid-column: 1 / -1; display: block; }
+  .file input { display: block; width: 100%; margin-top: 4px; color: var(--muted); font-size: 13px; }
+  textarea {
+    width: 100%; margin-top: 8px; padding: 8px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--button); color: var(--fg); font: 13px/1.4 ui-monospace, Menlo, monospace;
+  }
+  ol { padding-left: 20px; margin: 8px 0 0; font-size: 13px; }
+  li { margin: 2px 0; word-break: break-word; }
+</style>
+</head>
+<body>
+<h1>Kin spike · storage check</h1>
+<p class="muted" id="meta"></p>
+<p class="verdict" id="verdict">Checking…</p>
+<table>
+  <thead><tr><th>Storage</th><th class="n">Runner saw</th><th class="n">This view sees</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<h2>1 · Write from this view</h2>
+<p class="muted">Tap, then say "spike read". The runner should list "from webview".</p>
+<div class="buttons"><button id="write" type="button" style="grid-column: 1 / -1">Save "from webview"</button></div>
+
+<h2>2 · Export / import (optional)</h2>
+<p class="muted">Try each one and note what happens on screen.</p>
+<div class="buttons">
+  <button id="download" type="button">Download file</button>
+  <button id="share" type="button">Share file</button>
+  <button id="copy" type="button">Copy text</button>
+  <button id="show" type="button">Show text</button>
+  <label class="file">Pick a file to import
+    <input id="pick" type="file">
+  </label>
+</div>
+<ol id="log"></ol>
+
+<script>
+'use strict';
+
+/* shared-storage:start (keep identical in scripts/index.html and assets/probe.html) */
+const SpikeStorage = (() => {
+  const KEY = 'lore:spike:entries';
+  const DB_NAME = 'lore:spike';
+  const DB_STORE = 'kv';
+  const CACHE_NAME = 'lore:spike';
+  const OPFS_FILE = 'lore-spike-entries.json';
+  const COOKIE = 'lore_spike';
+  const COOKIE_KEEP = 5;
+  const MAX_ENTRIES = 50;
+  const TIMEOUT_MS = 3000;
+
+  const isHttp = () => location.protocol === 'https:' || location.protocol === 'http:';
+  const asList = (x) => (Array.isArray(x) ? x : []);
+  const withTimeout = (promise) =>
+    Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), TIMEOUT_MS))]);
+  const done = (req) =>
+    new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  const describe = (e) =>
+    String((e && e.name && e.name !== 'Error' ? e.name + ': ' : '') + ((e && e.message) || e)).slice(0, 80);
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmt = (ms) => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const zone = () => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown zone'; } catch { return 'unknown zone'; }
+  };
+
+  function openDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+      req.onblocked = () => reject(new Error('blocked'));
+    });
+  }
+
+  const cacheRequest = () => new Request(new URL('/__lore_spike__/entries.json', location.origin).href);
+
+  function readCookie() {
+    const hit = document.cookie.split('; ').find((c) => c.startsWith(COOKIE + '='));
+    return hit ? JSON.parse(decodeURIComponent(hit.slice(COOKIE.length + 1))) : [];
+  }
+
+  const backends = [
+    {
+      name: 'localStorage',
+      available: () => { try { return !!window.localStorage; } catch { return false; } },
+      read: async () => asList(JSON.parse(localStorage.getItem(KEY) || '[]')),
+      write: async (list) => localStorage.setItem(KEY, JSON.stringify(list)),
+    },
+    {
+      name: 'IndexedDB',
+      available: () => { try { return !!window.indexedDB; } catch { return false; } },
+      read: async () => {
+        const db = await openDb();
+        try { return asList(await done(db.transaction(DB_STORE).objectStore(DB_STORE).get(KEY))); } finally { db.close(); }
+      },
+      write: async (list) => {
+        const db = await openDb();
+        try {
+          const tx = db.transaction(DB_STORE, 'readwrite');
+          tx.objectStore(DB_STORE).put(list, KEY);
+          await new Promise((resolve, reject) => {
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error || new Error('aborted'));
+          });
+        } finally { db.close(); }
+      },
+    },
+    {
+      name: 'Cache API',
+      available: () => isHttp() && typeof caches !== 'undefined',
+      read: async () => {
+        const res = await (await caches.open(CACHE_NAME)).match(cacheRequest());
+        return res ? asList(await res.json()) : [];
+      },
+      write: async (list) => {
+        const body = new Response(JSON.stringify(list), { headers: { 'Content-Type': 'application/json' } });
+        await (await caches.open(CACHE_NAME)).put(cacheRequest(), body);
+      },
+    },
+    {
+      name: 'OPFS',
+      available: () => !!(navigator.storage && navigator.storage.getDirectory),
+      read: async () => {
+        const dir = await navigator.storage.getDirectory();
+        let handle;
+        try { handle = await dir.getFileHandle(OPFS_FILE); } catch (e) { if (e && e.name === 'NotFoundError') return []; throw e; }
+        const text = await (await handle.getFile()).text();
+        return text ? asList(JSON.parse(text)) : [];
+      },
+      write: async (list) => {
+        const dir = await navigator.storage.getDirectory();
+        const handle = await dir.getFileHandle(OPFS_FILE, { create: true });
+        if (!handle.createWritable) throw new Error('no createWritable');
+        const w = await handle.createWritable();
+        await w.write(JSON.stringify(list));
+        await w.close();
+      },
+    },
+    {
+      name: 'cookie',
+      available: () => isHttp() && navigator.cookieEnabled,
+      read: async () => asList(readCookie()),
+      write: async (list) => {
+        const value = encodeURIComponent(JSON.stringify(list.slice(-COOKIE_KEEP)));
+        const secure = location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = `${COOKIE}=${value}; Max-Age=31536000; Path=/; SameSite=Strict${secure}`;
+        if (!document.cookie.includes(COOKIE + '=')) throw new Error('not stored');
+      },
+    },
+  ];
+
+  async function readOne(b) {
+    if (!b.available()) return { status: 'unavailable' };
+    try { return { status: 'ok', entries: await withTimeout(b.read()) }; } catch (e) { return { status: 'error', error: describe(e) }; }
+  }
+
+  async function appendOne(b, entry) {
+    if (!b.available()) return { status: 'unavailable' };
+    try {
+      let list = [];
+      try { list = await withTimeout(b.read()); } catch { list = []; }
+      await withTimeout(b.write([...list, entry].slice(-MAX_ENTRIES)));
+      const after = await withTimeout(b.read());
+      if (!after.some((x) => x.t === entry.t && x.v === entry.v)) return { status: 'error', error: 'not visible after write' };
+      return { status: 'ok', entries: after };
+    } catch (e) {
+      return { status: 'error', error: describe(e) };
+    }
+  }
+
+  const collect = async (fn) => {
+    const results = await Promise.all(backends.map(fn));
+    return Object.fromEntries(backends.map((b, i) => [b.name, results[i]]));
+  };
+
+  async function storageInfo() {
+    const info = { persisted: 'n/a', usage: null };
+    try {
+      if (navigator.storage && navigator.storage.persisted) info.persisted = (await withTimeout(navigator.storage.persisted())) ? 'yes' : 'no';
+    } catch { info.persisted = 'error'; }
+    try {
+      if (navigator.storage && navigator.storage.estimate) info.usage = (await withTimeout(navigator.storage.estimate())).usage;
+    } catch { /* not supported */ }
+    return info;
+  }
+
+  async function requestPersist() {
+    try {
+      if (navigator.storage && navigator.storage.persist) return (await withTimeout(navigator.storage.persist())) ? 'granted' : 'denied';
+    } catch (e) { return 'error: ' + describe(e); }
+    return 'n/a';
+  }
+
+  return {
+    readAll: () => collect((b) => readOne(b)),
+    appendAll: (entry) => collect((b) => appendOne(b, entry)),
+    storageInfo, requestPersist, describe, fmt, zone,
+  };
+})();
+/* shared-storage:end */
+
+const { fmt, zone, describe } = SpikeStorage;
+const $ = (id) => document.getElementById(id);
+
+function log(message, cls) {
+  const li = document.createElement('li');
+  li.textContent = `${new Date().toTimeString().slice(0, 8)} ${message}`;
+  if (cls) li.className = cls;
+  $('log').prepend(li);
+}
+
+function runnerCounts() {
+  try {
+    const raw = new URLSearchParams(location.search).get('r');
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+async function render() {
+  const runner = runnerCounts();
+  const mine = await SpikeStorage.readAll();
+  const rows = $('rows');
+  rows.textContent = '';
+  let compared = 0;
+  let mismatched = 0;
+  for (const [name, r] of Object.entries(mine)) {
+    const here = r.status === 'ok' ? r.entries.length : -1;
+    const there = runner && runner.c && name in runner.c ? runner.c[name] : null;
+    if (there !== null && there >= 0 && here >= 0) {
+      compared++;
+      // The view may load after later writes, so it can legitimately see more, never fewer.
+      if (here < there) mismatched++;
+    }
+    const tr = document.createElement('tr');
+    const show = (n, res) => (n === null ? '—' : n < 0 ? (res && res.status === 'error' ? 'error' : 'n/a') : String(n));
+    for (const [text, cls] of [[name, ''], [show(there), 'n'], [show(here, r), 'n']]) {
+      const td = document.createElement('td');
+      td.textContent = text;
+      if (cls) td.className = cls;
+      tr.appendChild(td);
+    }
+    if (r.status === 'error') tr.title = r.error;
+    rows.appendChild(tr);
+  }
+  const verdict = $('verdict');
+  if (!runner) {
+    verdict.textContent = 'No runner data in the URL (page opened directly).';
+    verdict.className = 'verdict';
+  } else if (compared === 0) {
+    verdict.textContent = 'Nothing to compare yet.';
+    verdict.className = 'verdict';
+  } else if (mismatched === 0) {
+    verdict.textContent = 'Same storage as the runner: YES';
+    verdict.className = 'verdict ok';
+  } else {
+    verdict.textContent = `Same storage as the runner: NO (${mismatched} differ)`;
+    verdict.className = 'verdict bad';
+  }
+  const runnerOrigin = runner && runner.o ? runner.o : 'unknown';
+  $('meta').textContent = `View origin ${location.origin || location.protocol} · runner origin ${runnerOrigin} · ${fmt(Date.now())} ${zone()}`;
+}
+
+const testText = () => JSON.stringify({ lore_spike_test: true, at: new Date().toISOString() }, null, 2);
+
+$('write').addEventListener('click', async () => {
+  const results = await SpikeStorage.appendAll({ v: 'from webview', t: Date.now(), p: 'webview' });
+  const summary = Object.entries(results).map(([k, r]) => `${k} ${r.status === 'ok' ? '✓' : '✗'}`).join(' · ');
+  log(`Saved from webview: ${summary}`, 'ok');
+  render();
+});
+
+$('download').addEventListener('click', () => {
+  try {
+    const url = URL.createObjectURL(new Blob([testText()], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'lore-spike-test.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    log('Download started. Did a save dialog or file preview appear?');
+  } catch (e) {
+    log(`Download failed: ${describe(e)}`, 'bad');
+  }
+});
+
+$('share').addEventListener('click', async () => {
+  if (!navigator.share) {
+    log('Share: navigator.share is not available here.', 'bad');
+    return;
+  }
+  try {
+    const file = new File([testText()], 'lore-spike-test.json', { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'Lore spike test' });
+      log('Share (file): completed.', 'ok');
+    } else {
+      await navigator.share({ title: 'Lore spike test', text: testText() });
+      log('Share (text only, files not supported): completed.', 'ok');
+    }
+  } catch (e) {
+    log(`Share: ${describe(e)}${e && e.name === 'AbortError' ? ' (sheet opened, then cancelled: the API works)' : ''}`);
+  }
+});
+
+$('copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(testText());
+    log('Copy: copied to clipboard. Paste it in Notes to confirm.', 'ok');
+  } catch (e) {
+    log(`Copy: ${describe(e)}`, 'bad');
+  }
+});
+
+$('show').addEventListener('click', () => {
+  const pre = document.createElement('textarea');
+  pre.value = testText();
+  pre.rows = 4;
+  $('log').before(pre);
+  pre.focus();
+  pre.select();
+  log('Shown as selectable text (manual copy fallback).');
+});
+
+$('pick').addEventListener('change', async (event) => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) {
+    log('Pick: no file chosen.');
+    return;
+  }
+  try {
+    const text = await file.text();
+    log(`Pick: read "${file.name}" (${file.size} bytes): ${text.slice(0, 60).replace(/\s+/g, ' ')}`, 'ok');
+  } catch (e) {
+    log(`Pick: could not read "${file.name}": ${describe(e)}`, 'bad');
+  }
+});
+
+render().catch((e) => {
+  $('verdict').textContent = `Error: ${describe(e)}`;
+  $('verdict').className = 'verdict bad';
+});
+</script>
+</body>
+</html>
