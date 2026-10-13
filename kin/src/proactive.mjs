@@ -169,9 +169,8 @@ export function reminderSlot(occurrence, lead, at, clock) {
 }
 
 /** Plan the reminders for some people: every visible date in the next year. */
-export function planReminders(folder, slugs, clock) {
+export function planReminders(folder, slugs, clock, { at = remindAt(folder) } = {}) {
   const wanted = new Set(slugs);
-  const at = remindAt(folder);
   const all = upcomingQuery(folder, { today: clock.date, days: 366, includeSensitive: false });
   const withSensitive = upcomingQuery(folder, { today: clock.date, days: 366, includeSensitive: true });
   const sensitive = withSensitive.items.filter((i) => wanted.has(i.slug)).length - all.items.filter((i) => wanted.has(i.slug)).length;
@@ -268,15 +267,19 @@ export function remind(ctx, input) {
     if (set.reply) return set.reply;
     lines.push(set.line);
   }
+  // A time for one person is for this request; for a group or everyone it becomes the setting.
   const atRaw = cleanText(input.at ?? input.time);
+  let at;
   if (atRaw) {
-    const at = parseClock(atRaw);
+    at = parseClock(atRaw);
     if (!at) return reply(t.badClock(atRaw));
-    if (!folder.writable) return reply(t.unsupportedVersion(folder.version));
-    folder.updateMe({ 'kin.remind_at': at });
+    if (!scope.slug) {
+      if (!folder.writable) return reply(t.unsupportedVersion(folder.version));
+      folder.updateMe({ 'kin.remind_at': at });
+    }
   }
 
-  const { plans, tooLate, sensitive } = planReminders(folder, slugs, ctx.clock);
+  const { plans, tooLate, sensitive } = planReminders(folder, slugs, ctx.clock, at ? { at } : {});
   const done = ctx.schedule.reminders;
   const fresh = plans.filter((p) => !done[p.id]);
   const already = plans.filter((p) => done[p.id]);

@@ -21,7 +21,7 @@ Call `run_js` with script `index.html` and data: a JSON object with "action", "l
 - delete: person, text. Without text, the whole person.
 - backup. A panel to save or restore all data.
 - digest. Summary of what is coming up. every ("cada lunes", "daily") and at ("9:00") set up a notification for it.
-- remind: person (or family, friends, partner, colleagues, everyone), before ("dos semanas"), at. Reminders before dates; before and at also change the settings. "calendar": true adds the dates to the calendar instead.
+- remind: person (or family, friends, partner, colleagues, everyone), before ("dos semanas"), at. Reminders before dates; before also changes the setting. "calendar": true adds the dates to the calendar instead.
 - feedback: text. The user says the last answer was wrong ("no era eso"): their correction.
 
 ## Examples

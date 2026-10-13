@@ -174,12 +174,18 @@ describe('remind', () => {
     assert.deepEqual(intents(say({ action: 'remind', person: 'family', lang: 'en' })).map(at), ['2027-08-31T09:00']);
   });
 
-  test('a lead time for one person, and a time of day for all', () => {
-    const text = say({ action: 'remind', person: 'Luis', before: '10 días', at: '8:00', lang: 'es' });
+  test('a lead time for one person is kept; a time for one person is for that request only', () => {
+    const text = say({ action: 'remind', person: 'Luis', before: '10 días', at: '18:05', lang: 'es' });
     assert.equal(text.split('\n')[0], 'Hecho: Luis Ortega, 10 días antes.');
     assert.equal(folder().person('luis-ortega').get('kin.lead_days'), 10);
+    assert.equal(folder().setting('kin.remind_at'), undefined);
+    assert.deepEqual(intents(text).map(at), ['2026-10-24T18:05']);
+  });
+
+  test('a time of day for a group or everyone becomes the setting', () => {
+    const text = say({ action: 'remind', person: 'everyone', at: '8:00', lang: 'en' });
     assert.equal(folder().setting('kin.remind_at'), '08:00');
-    assert.deepEqual(intents(text).map(at), ['2026-10-24T08:00']);
+    assert.deepEqual(intents(text).map(at), ['2026-10-17T08:00', '2026-10-31T08:00', '2027-02-27T08:00']);
   });
 
   test('when the lead time has passed: as soon as possible, never in the past', () => {

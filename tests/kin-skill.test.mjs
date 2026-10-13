@@ -16,7 +16,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SKILL_MD = readFileSync(join(ROOT, 'skills', 'kin', 'SKILL.md'), 'utf8');
 
 // Kin 0.1: 2382 characters (~596 tokens at 4 characters a token). Kin 0.2 adds digest, remind,
-// feedback and the run_intent rule: 2976 characters (~744 tokens).
+// feedback and the run_intent rule: 2969 characters (~742 tokens).
 test('SKILL.md stays short', () => {
   assert.ok(SKILL_MD.length <= 3000, `${SKILL_MD.length} characters (~${Math.round(SKILL_MD.length / 4)} tokens); keep it under 3000`);
 });
