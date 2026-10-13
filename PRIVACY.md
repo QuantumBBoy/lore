@@ -19,7 +19,12 @@ Only what you tell it, as a [Lore folder](spec/SPEC.md):
 | `INDEX.md` | A generated list of the files, one line each. It never contains sensitive data. |
 | `conflicts/<time>/…` | Only after you merge a backup that changes a file: the version that was on the phone, so a merge never loses anything. |
 
-Kin also keeps three small records of its own:
+Your settings live in these files too, as `kin.` fields: how long before a date to remind you
+(`kin.lead_days`), at what time (`kin.remind_at`), the summary you asked for (`kin.digest`), and
+which dates were already exported to a calendar (`kin.calendar`, `kin.calendar_birthday`).
+
+Kin also keeps some records of its own, which are not part of your Lore folder and do not go into
+backups:
 
 - `lore:v1:meta`: the date you first used Kin, the date of your last backup, how many changes you
   have made since, and the date of the last backup reminder.
@@ -27,8 +32,17 @@ Kin also keeps three small records of its own:
   so you can undo it. It stays until you undo or import again. A person you delete after an import
   is still in this copy until then.
 - `lore:v1:bin:…`: files that are not text, if a backup you imported contains any.
+- `lore:v1:schedule`: which reminders Kin handed to the app's notification scheduler, and when the
+  next weekly summary is due, so it does not hand over the same reminder twice. Entries are
+  dropped once their day has passed.
+- `lore:v1:last`: Kin's last call, what the model sent and what Kin answered, so you can say it was
+  wrong. Each call replaces the previous one.
+- `lore:v1:feedback`: the mistakes you reported, each with that call and your correction (at most
+  the last 500). Only you add to it, by telling Kin an answer was wrong.
+- `lore:v1:evalnames`: which placeholder (`person_1`, `person_2`…) stands for whom in exported
+  mistakes, so each person keeps theirs.
 
-There are no analytics, logs, identifiers or cookies.
+There are no analytics, identifiers or cookies. Nothing is sent anywhere.
 
 ## Where it is stored
 
@@ -52,6 +66,29 @@ What does go over the network:
   [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
   The request carries none of your data.
 - **The model.** The Gallery app downloads the Gemma model once. That is between you and the app.
+
+## Reminders, the summary and the calendar
+
+These are shown outside Kin, so they follow the rule for anything stored, sent or shared (spec
+§6.4): **they never contain sensitive data.** A sensitive date gets no reminder and no calendar
+event, and Kin says how many it left out.
+
+- **Notifications** show a title and a text, like *"Kin · Cumpleaños de Marta Ruiz en 3 días"*,
+  on your lock screen. They are scheduled by the Gallery app on your phone; Kin only hands over
+  their text and time. To remove one, use the app's notifications screen.
+- **Calendar events** carry a name and what the date is ("Cumpleaños de Marta Ruiz"). Once you add
+  them to a calendar, they go wherever that calendar syncs (iCloud, Google…), under that service's
+  rules. Add them to a local calendar if you prefer.
+- **The summary** is an answer in the chat, like any other.
+
+## Sharing your mistakes for evals
+
+When you share the mistake log (backup panel → "Share mistakes"), Kin replaces the names of
+everyone in your folder, and of anyone else the model named, with `person_1`, `person_2`…, you
+with `owner`, and removes e-mail addresses and phone numbers. A call that involved sensitive data
+keeps neither its text, nor Kin's answer, nor your correction. **Other details stay**: dates, places,
+names of people Kin never heard of that only appear inside a note. Read the file before you
+publish it.
 
 ## What the model sees
 

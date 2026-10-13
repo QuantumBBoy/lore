@@ -9,8 +9,10 @@ modelos de lenguaje.
 **Kin** es la primera app construida sobre Lore. Es una skill para
 [Google AI Edge Gallery](https://github.com/google-ai-edge/gallery), la app que ejecuta modelos
 Gemma en el teléfono, y te ayuda a recordar a la gente de tu vida: cumpleaños, ideas de regalo,
-promesas, cosas que preguntar y con quién hace tiempo que no hablas. No hace ninguna petición de
-red y nada de lo que le cuentas sale del teléfono.
+promesas, cosas que preguntar y con quién hace tiempo que no hablas. Desde la versión 0.2 también
+habla primero: prepara recordatorios antes de los cumpleaños, te manda un resumen semanal y pone
+tus fechas en el calendario. No hace ninguna petición de red y nada de lo que le cuentas sale del
+teléfono.
 
 ## Por qué local
 
@@ -67,6 +69,31 @@ Kin también guarda planes, tallas, restricciones alimentarias y cosas que pregu
 Puedes decir cada cuánto quieres hablar con alguien y preguntar con quién vas atrasado. Di `copia
 de seguridad` para guardar o recuperar todo.
 
+## Kin habla primero
+
+La versión 0.2 usa lo que ofrece la app Gallery para avisarte sin que preguntes
+([investigación](docs/research/builtin-skills.md), en inglés):
+
+1. `Avísame dos semanas antes de los cumpleaños de mi familia`
+   → *Hecho: tu familia, 14 días antes.* Kin prepara los próximos recordatorios y se los pasa al
+   programador de notificaciones de la app; el modelo los programa. Cuando llega uno, al tocarlo se
+   abre un chat con *«¿Qué le regalo a Carmen Moreno? Cumple el 8 mar.»* listo para enviar.
+2. `Mándame un resumen cada lunes a las 9`
+   → cada lunes, una notificación abre el resumen de Kin: fechas de las próximas dos semanas, con
+   quién hace tiempo que no hablas, promesas pendientes y, cuando toca, la copia de seguridad.
+   Seis líneas como mucho.
+3. `Pon los cumpleaños en mi calendario`
+   → un panel comparte un archivo de calendario: cada cumpleaños y fecha como evento anual de día
+   completo, con aviso según tu antelación. Ábrelo en Archivos para añadirlos. La próxima vez solo
+   van las fechas nuevas o cambiadas.
+4. `No era eso, quería la hermana de Javi`
+   → Kin anota el error. El panel de copia de seguridad comparte la lista como
+   `evals/cases.jsonl`, con los nombres cambiados por `person_1`, `person_2`…, para publicarla y
+   volver a probarla (`npm run evals`).
+
+La antelación depende de la relación (pareja 14 días, familia 7, amigos 3, compañeros 1, el resto
+3) y se guarda en tu carpeta Lore cuando la cambias hablando.
+
 ## Limitaciones
 
 Kin es un prototipo que funciona. Antes de fiarte de él, ten en cuenta esto:
@@ -77,8 +104,15 @@ Kin es un prototipo que funciona. Antes de fiarte de él, ten en cuenta esto:
   20 cambios; guarda esas copias. Todavía se está comprobando si el almacenamiento aguanta ocho
   días o más sin abrir Kin.
 - **Sin sincronización.** Un solo teléfono. Para pasar a otro, usa una copia de seguridad.
-- **Sin recordatorios.** Las skills no pueden ejecutarse en segundo plano, así que Kin solo habla
-  cuando le preguntas. No puede avisarte de un cumpleaños.
+- **Las notificaciones dependen de la app.** Kin no puede ejecutarse en segundo plano: pasa los
+  recordatorios a la intención `schedule_notification` de la app Gallery. En el código público de
+  la app esa intención es solo de Android, y aún no está confirmado si la app de iPhone la tiene.
+  En iPhone, la exportación al calendario te da los avisos con las alertas del calendario en
+  cualquier caso. La app puede repetir una notificación cada día pero no cada semana, así que el
+  resumen semanal se renueva cada vez que lo abres, y una skill no puede ver ni cancelar
+  notificaciones.
+- **El modelo tiene que pasar el recordatorio.** La respuesta de Kin lleva la notificación para
+  que el modelo la programe, y acaba con una frase que puedes decir si no lo ha hecho.
 - **Los modelos pequeños se equivocan.** A veces el modelo contesta sin llamar a Kin, elige la
   acción equivocada o entiende mal un nombre. Kin pregunta antes de crear, sobrescribir o borrar,
   pero revisa lo que dice que ha guardado.
@@ -92,7 +126,8 @@ Kin es un prototipo que funciona. Antes de fiarte de él, ten en cuenta esto:
   `quantumbboy.github.io`, así que GitHub ve esa petición (como con cualquier web). Tus datos nunca
   se envían. No se ha probado si Kin funciona sin conexión.
 - **Solo español e inglés**, y de momento solo la parte de personas de Lore.
-- **La especificación es un borrador 0.1** y puede cambiar antes de la 1.0.
+- **La especificación es un borrador 0.2** y puede cambiar antes de la 1.0. La 0.2 solo añade
+  cosas a la 0.1: una carpeta de Kin 0.1 se lee y se deja como está.
 
 Es un proyecto independiente, sin relación con Google ni respaldado por Google.
 
@@ -112,7 +147,8 @@ lore/
 - [spec/SPEC.md](spec/SPEC.md): la especificación (en inglés), con niveles de sensibilidad,
   sintaxis del cuerpo, reglas de fechas y extensiones.
 - [spec/schemas/](spec/schemas/): los JSON Schemas, publicados también en
-  `https://quantumbboy.github.io/lore/spec/0.1/`.
+  `https://quantumbboy.github.io/lore/spec/0.2/`. La versión 0.1 queda congelada en
+  [spec/0.1/](spec/0.1/) y en `…/spec/0.1/`.
 - [lore-core/](lore-core/README.md): una librería JavaScript sin dependencias que lee, edita,
   valida y consulta carpetas Lore sin perder lo editado a mano.
 
@@ -124,10 +160,11 @@ cambios o registrar un espacio de nombres para extensiones.
 | Fase | Estado |
 | --- | --- |
 | 1. Prueba de viabilidad: ¿sobrevive el almacenamiento de una skill en iPhone? | Hecha ([resultados](docs/spike/RESULTS.md)) |
-| 2. Especificación Lore 0.1 | Borrador |
-| 3. Librería lore-core | Hecha |
-| 4. Skill Kin | Hecha, probada en iPhone ([resultados](docs/kin/RESULTS.md)) |
+| 2. Especificación Lore | Borrador 0.2; la 0.1 congelada |
+| 3. Librería lore-core | 0.2.0 |
+| 4. Skill Kin | 0.1 probada en iPhone ([resultados](docs/kin/RESULTS.md)) |
 | 5. Documentación y lanzamiento | Este README, [PRIVACY.md](PRIVACY.md), [ROADMAP.md](ROADMAP.md), [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Kin 0.2: recordatorios, resumen, calendario, registro de errores | Hecho; falta la [prueba en el móvil](docs/kin/PHONE-TEST-0.2.md). Cambios en [CHANGELOG.md](CHANGELOG.md) |
 
 Lo siguiente está en [ROADMAP.md](ROADMAP.md).
 
@@ -140,6 +177,7 @@ npm ci
 npx playwright install chromium webkit   # una vez, para los tests de navegador
 node tools/build-kin.mjs                 # después de editar kin/ o lore-core/
 npm test
+npm run evals                            # vuelve a probar los errores anotados de Kin
 ```
 
 Los detalles, la estructura del repositorio y cómo contribuir están en

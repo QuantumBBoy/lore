@@ -59,6 +59,7 @@ CI runs the same steps, with Chromium and WebKit (the iPhone's engine) both requ
 | `tools/build-site.mjs` | Builds the Pages site in `_site/`: skills, and the spec under `spec/<version>/`. |
 | `tools/gen-schemas.mjs` | Embeds the JSON Schemas into lore-core. |
 | `tests/` | Spec consistency tests, browser tests that call each skill the way the app does, and a static privacy scan. |
+| `evals/cases.jsonl` | Kin's logged mistakes, replayed by `tools/replay-evals.mjs` (`npm run evals`). |
 | `docs/` | Phone test scripts and their results. |
 
 ## Making changes
@@ -79,7 +80,19 @@ test caps its size and checks it lists exactly Kin's actions.
 
 **The spec.** Change `spec/SPEC.md` and the schemas together, run `node tools/gen-schemas.mjs`,
 update the example folder if needed, and add a line to the changelog (Appendix B). Breaking
-changes need a new spec version.
+changes need a new spec version. To start a new version, first freeze the current one: copy
+`spec/SPEC.md` and `spec/schemas/` to `spec/<version>/` (never edit them again), then change the
+version and `$id`s in `spec/schemas/`. The site publishes every version, lore-core embeds every
+version's schemas, and a fixture of the old example folder (`tests/fixtures/lore-<version>/`)
+must keep loading byte for byte.
+
+**Kin's mistakes (evals).** People who use Kin can export the mistakes they reported as
+`cases.jsonl` from the backup panel. To add them, append the lines to `evals/cases.jsonl`, read
+them first (names are replaced, but other details are not), and triage each case: set `fault` to
+`kin` with an `expected` object (the keys of `kin/src/interpret.mjs`, such as `{"days": 365}` or
+`{"date": "2026-10-12"}`) when Kin misread what the model sent, or to `model` when the model chose
+the wrong action or person. `npm run evals` replays every case; a `kin` case that fails is a bug to
+fix. `model` cases can only be re-run on a phone; fix those through `SKILL.md`.
 
 **Extension namespaces.** Open a pull request that adds a row to the registry in
 [spec section 12](spec/SPEC.md#12-extensions). Reverse domain names (`com.example.app`) need no

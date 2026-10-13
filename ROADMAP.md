@@ -6,8 +6,19 @@ to discuss any of them, or to propose something else.
 Two rules hold for everything below. Data stays on devices the owner controls unless the owner
 explicitly sends it somewhere. Sensitive data is filtered before any model sees it.
 
-## Now: Kin 0.1 in real use
+## Done in 0.2: Kin speaks first
 
+Reminders before dates, a daily or weekly summary, calendar export and a mistake log for evals
+([CHANGELOG.md](CHANGELOG.md)).
+
+## Now: Kin in real use
+
+- **Notifications on iPhone.** Check whether the iPhone app has `schedule-notification` and
+  `create-calendar-event` ([research](docs/research/builtin-skills.md)). If it does not, the
+  calendar alerts are how Kin reminds you on iPhone.
+- **Chaining.** Measure how often the model calls `run_intent` after Kin in the same turn, and
+  shorten the fallback sentence if people use it.
+- **Triage the mistake log.** Turn reported mistakes into `evals/cases.jsonl` cases and fix them.
 - **Storage over time.** Check that Kin's data is still there after eight or more days without
   opening it (Safari's seven-day rule for script-written storage may or may not apply in apps).
 - **Offline.** Check whether Kin works without a connection once the app has loaded it before.

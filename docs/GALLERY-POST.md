@@ -34,6 +34,10 @@ already given, things to ask someone next time, promises and things lent, likes,
 restrictions, and who you haven't talked to in a while. Just talk about people in a chat and the
 model calls Kin.
 
+It can also speak first: it plans reminders before birthdays (lead times by relationship, set by
+talking) and hands them to the schedule-notification skill, sends you a daily or weekly summary,
+and exports your dates to the calendar as yearly all-day events with alerts.
+
 It is local-first and makes no network requests: everything stays in the app's storage on your
 phone, and every page has a Content-Security-Policy that blocks all connections. No API key or
 account needed. Sensitive notes (health, money, relationships) are kept away from the model unless
@@ -53,6 +57,9 @@ https://github.com/QuantumBBoy/lore
 - "What should I get Marta? Around 40 euros"
 - "Any birthdays in the next 3 months?"
 - "Who haven't I talked to in a while?"
+- "Remind me two weeks before my family's birthdays"
+- "Send me a summary every Monday at 9"
+- "Put the birthdays in my calendar"
 - "Backup" → a panel to save or restore everything
 
 **Tips**

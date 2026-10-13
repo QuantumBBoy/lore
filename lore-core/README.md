@@ -40,7 +40,8 @@ In Node.js, `src/node.mjs` adds `readFolder(dir)` and `writeFolder(dir, folder)`
 
 | Area | Functions |
 | --- | --- |
-| Folder | `LoreFolder.fromFiles`, `LoreFolder.create`, `toFiles`, `paths`, `getText`, `setText`, `remove`, `file`, `me`, `slugs`, `person`, `nameOf` |
+| Folder | `LoreFolder.fromFiles`, `LoreFolder.create`, `toFiles`, `paths`, `getText`, `setText`, `remove`, `file`, `me`, `updateMe(patch)`, `setting(key)`, `slugs`, `person`, `nameOf` |
+| Versions | `version` (what `me.md` declares), `writable` (whether this library supports it), `SPEC_VERSION` (new folders), `SUPPORTED_VERSIONS` |
 | People | `createPerson(fields)` → slug, `updatePerson(slug, patch)` (null removes a field), `deletePerson(slug)` (also removes links to them), `recordContact(slug, date)` |
 | Links | `link(a, b, type)` writes both directions with the inverse type (spec 8.2), `unlink(a, b)` |
 | Entries | `entries(slug, section)`, `findEntries(slug, section, text)`, `addEntry`, `updateEntry`, `completeEntry`, `removeEntry`, `giveGift` |
@@ -62,8 +63,11 @@ carry line numbers.
 
 - Merging an import keeps the previous version of every changed file under
   `conflicts/<timestamp>/`, which the spec lets programs add (unknown directories are preserved).
-- `src/schemas.generated.mjs` is generated from `spec/schemas` by `node tools/gen-schemas.mjs`;
-  a test fails if it is out of date.
+- `src/schemas.generated.mjs` is generated from `spec/schemas` and the frozen `spec/<version>/schemas`
+  by `node tools/gen-schemas.mjs`; a test fails if it is out of date.
+- Lore 0.1 and 0.2 are supported. A folder is validated against the schemas of the version it
+  declares and keeps that version when edited (`INDEX.md` too); only the owner upgrades a folder
+  (spec section 13). New folders are 0.2.
 
 ## Tests
 

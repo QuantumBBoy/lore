@@ -1,6 +1,6 @@
 {
   "name": "lore",
-  "version": "0.0.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Lore, an open local-first file format for personal life context, and Kin, its first app.",
   "license": "Apache-2.0",
