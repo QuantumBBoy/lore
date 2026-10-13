@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://quantumbboy.github.io/lore/spec/0.1/person.schema.json",
-  "title": "Lore 0.1 person (people/<slug>.md) frontmatter",
+  "$id": "https://quantumbboy.github.io/lore/spec/0.2/person.schema.json",
+  "title": "Lore 0.2 person (people/<slug>.md) frontmatter",
   "description": "One file per person. See spec/SPEC.md, section 8.",
   "type": "object",
   "required": [

@@ -5,7 +5,7 @@ export { LoreError, LoreFolder, INVERSE_LINK, AREA_FILES, VERSION, GENERATOR } f
 export { LoreFile } from './file.mjs';
 export { LoreFormatError } from './frontmatter.mjs';
 export { YamlError, parseYaml, stringifyYaml } from './yaml.mjs';
-export { SPEC_VERSION, validateFrontmatter, formatErrors } from './schema.mjs';
+export { SPEC_VERSION, SUPPORTED_VERSIONS, validateFrontmatter, formatErrors } from './schema.mjs';
 export { PERSON_SECTIONS, SECTION_IDS, headingFor } from './sections.mjs';
 export { parseAttributes, formatAttributes } from './attributes.mjs';
 export { parseEntryLine, formatEntryLine } from './body.mjs';

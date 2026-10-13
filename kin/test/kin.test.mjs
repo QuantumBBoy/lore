@@ -45,7 +45,7 @@ describe('an empty phone', () => {
     assert.equal(storage.length, 0, 'nothing written before confirmation');
     const ok = say({ action: 'capture', person: 'marta ruiz', kind: 'gift_idea', text: 'Wants to learn pottery', lang: 'en', confirm: true });
     assert.equal(ok, 'Added Marta Ruiz. Saved for Marta Ruiz (gift ideas): Wants to learn pottery');
-    assert.match(fileText('me.md'), /^---\nlore: "0\.1"\nname: Me\nlanguage: en\n/);
+    assert.match(fileText('me.md'), /^---\nlore: "0\.2"\nname: Me\nlanguage: en\n/);
     assert.match(fileText('people/marta-ruiz.md'), /## Gift ideas\n\n- 2026-10-13: Wants to learn pottery\n/);
     assert.match(fileText('INDEX.md'), /- people\/marta-ruiz\.md — Marta Ruiz\n/);
     for (let i = 0; i < storage.length; i++) assert.ok(storage.key(i).startsWith('lore:v1:'), storage.key(i));
@@ -309,6 +309,47 @@ describe('backup and reminders', () => {
     say({ action: 'capture', person: 'Sam', kind: 'note', text: 'one change', lang: 'en' });
     assert.ok(!say({ action: 'overdue', lang: 'en' }, { now: new Date('2026-11-01T10:00:00Z') }).includes('Tip'));
     assert.match(say({ action: 'overdue', lang: 'en' }, { now: new Date('2026-11-12T10:00:00Z') }), /Tip:/);
+  });
+});
+
+describe('a folder from Lore 0.1', () => {
+  const LORE_0_1 = join(fileURLToPath(new URL('../..', import.meta.url)), 'tests', 'fixtures', 'lore-0.1');
+  const files = () => Object.fromEntries([...Array(storage.length).keys()].map((i) => storage.key(i)).filter((k) => k.startsWith('lore:v1:file:')).sort().map((k) => [k, storage.getItem(k)]));
+  beforeEach(() => {
+    storage = new MemoryStorage();
+    saveFolder(storage, readFolder(LORE_0_1));
+  });
+
+  test('loads untouched: reading never changes a byte', () => {
+    const before = files();
+    assert.match(before['lore:v1:file:me.md'], /^---\nlore: "0\.1"\n/);
+    for (const data of [
+      { action: 'person', person: 'Marta' },
+      { action: 'brief', person: 'Luis' },
+      { action: 'gift_context', person: 'Marta', budget: '40' },
+      { action: 'upcoming', days: 'este mes' },
+      { action: 'overdue' },
+      { action: 'backup' },
+    ]) {
+      const r = call({ ...data, lang: 'es' });
+      assert.equal(r.status, 'succeeded', JSON.stringify(data));
+    }
+    assert.deepEqual(files(), before);
+  });
+
+  test('stays 0.1 when Kin writes to it', () => {
+    say({ action: 'capture', person: 'Marta', kind: 'note', text: 'Café', lang: 'es' });
+    assert.match(fileText('me.md'), /^---\nlore: "0\.1"\n/);
+    assert.match(fileText('INDEX.md'), /^---\nlore: "0\.1"\n/);
+    assert.deepEqual(folder().validate({ now: NOW }), []);
+  });
+
+  test('a folder from a newer version is read but never changed', () => {
+    storage.setItem('lore:v1:file:me.md', fileText('me.md').replace('lore: "0.1"', 'lore: "0.9"'));
+    const before = files();
+    assert.match(say({ action: 'person', person: 'Marta', lang: 'es' }), /^Marta Ruiz/);
+    assert.equal(say({ action: 'capture', person: 'Marta', kind: 'note', text: 'Café', lang: 'es' }), 'Tus datos están en formato Lore 0.9, que esta versión de Kin no puede modificar. Puede leerlos. Actualiza Kin para hacer cambios.');
+    assert.deepEqual(files(), before);
   });
 });
 

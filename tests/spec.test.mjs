@@ -19,18 +19,23 @@ import {
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SCHEMAS = join(ROOT, 'spec', 'schemas');
+const SCHEMAS_0_1 = join(ROOT, 'spec', '0.1', 'schemas');
 const EXAMPLE = join(ROOT, 'examples', 'lore');
+const LORE_0_1 = join(ROOT, 'tests', 'fixtures', 'lore-0.1');
 const SPEC = readFileSync(join(ROOT, 'spec', 'SPEC.md'), 'utf8');
-const BASE = 'https://quantumbboy.github.io/lore/spec/0.1/';
+const VERSION = '0.2';
+const base = (version) => `https://quantumbboy.github.io/lore/spec/${version}/`;
 
 const ajv = new Ajv2020({ strict: true, allErrors: true });
 addFormats(ajv);
 const schemaFiles = readdirSync(SCHEMAS).filter((f) => f.endsWith('.schema.json'));
-for (const f of schemaFiles) ajv.addSchema(JSON.parse(readFileSync(join(SCHEMAS, f), 'utf8')));
-const validator = (type) => ajv.getSchema(`${BASE}${type}.schema.json`);
+const readSchema = (dir, f) => JSON.parse(readFileSync(join(dir, f), 'utf8'));
+for (const f of schemaFiles) ajv.addSchema(readSchema(SCHEMAS, f));
+for (const f of readdirSync(SCHEMAS_0_1)) ajv.addSchema(readSchema(SCHEMAS_0_1, f));
+const validator = (type, version = VERSION) => ajv.getSchema(`${base(version)}${type}.schema.json`);
 
-function assertValid(type, data, label) {
-  const validate = validator(type);
+function assertValid(type, data, label, version = VERSION) {
+  const validate = validator(type, version);
   const ok = validate(data);
   assert.ok(ok, `${label} does not match ${type}.schema.json:\n${JSON.stringify(validate.errors, null, 2)}`);
 }
@@ -75,7 +80,7 @@ describe('JSON Schemas', () => {
     test(`${f} is a strict draft 2020-12 schema with a versioned $id`, () => {
       const schema = JSON.parse(readFileSync(join(SCHEMAS, f), 'utf8'));
       assert.equal(schema.$schema, 'https://json-schema.org/draft/2020-12/schema');
-      assert.equal(schema.$id, BASE + f);
+      assert.equal(schema.$id, base(VERSION) + f);
       assert.ok(ajv.getSchema(schema.$id), 'compiles in strict mode');
     });
   }
@@ -94,9 +99,10 @@ describe('JSON Schemas', () => {
     ['person', { name: '' }, 'empty name'],
     ['person', { aliases: ['Ana'] }, 'missing name'],
     ['me', { lore: 0.1, name: 'Alex' }, 'version as a number'],
-    ['me', { lore: '0.2', name: 'Alex' }, 'other version'],
-    ['me', { lore: '0.1', name: 'Alex', leap_day: 'mar01' }, 'bad leap_day'],
-    ['index', { lore: '0.1', generated: '2026-10-13 16:00' }, 'generated not RFC 3339 UTC'],
+    ['me', { lore: '0.1', name: 'Alex' }, 'other version (0.1 has its own schemas)'],
+    ['me', { lore: '0.3', name: 'Alex' }, 'a future version'],
+    ['me', { lore: '0.2', name: 'Alex', leap_day: 'mar01' }, 'bad leap_day'],
+    ['index', { lore: '0.2', generated: '2026-10-13 16:00' }, 'generated not RFC 3339 UTC'],
   ];
   for (const [type, data, why] of cases) {
     test(`${type} rejects: ${why}`, () => assert.equal(validator(type)(data), false));
@@ -263,5 +269,38 @@ describe('example folder', () => {
     }
     has(Object.keys(me.data).some((k) => k.includes('.')), 'an extension field');
     has(all.some((p) => p.data.last_contact && p.data.contact_cadence), 'contact cadence');
+  });
+});
+
+describe('versions', () => {
+  test('0.2 schemas differ from the frozen 0.1 ones only in version, $id and titles', () => {
+    const strip = (schema) => JSON.parse(JSON.stringify(schema).replace(/0\.[12]/g, 'X'));
+    assert.deepEqual(readdirSync(SCHEMAS_0_1).sort(), schemaFiles.sort());
+    for (const f of schemaFiles) {
+      const old = readSchema(SCHEMAS_0_1, f);
+      const now = readSchema(SCHEMAS, f);
+      assert.equal(new URL(old.$id).pathname, `/lore/spec/0.1/${f}`);
+      assert.equal(new URL(now.$id).pathname, `/lore/spec/${VERSION}/${f}`);
+      assert.deepEqual(strip(now), strip(old), f);
+    }
+    assert.equal(readSchema(SCHEMAS, 'common.schema.json').$defs.version.const, VERSION);
+    assert.equal(readSchema(SCHEMAS_0_1, 'common.schema.json').$defs.version.const, '0.1');
+  });
+
+  test('the 0.1 fixture folder is valid 0.1, and valid 0.2 once its version says so', () => {
+    const me = readLoreFile(readFileSync(join(LORE_0_1, 'me.md'), 'utf8'));
+    assert.equal(me.data.lore, '0.1');
+    assertValid('me', me.data, '0.1 me.md', '0.1');
+    assertValid('me', { ...me.data, lore: VERSION }, 'upgraded me.md');
+    for (const f of readdirSync(join(LORE_0_1, 'people'))) {
+      const person = readLoreFile(readFileSync(join(LORE_0_1, 'people', f), 'utf8'));
+      assertValid('person', person.data, `0.1 ${f}`, '0.1');
+      assertValid('person', person.data, `0.1 ${f} under ${VERSION}`);
+    }
+  });
+
+  test('the frozen 0.1 spec says it is 0.1', () => {
+    assert.match(readFileSync(join(ROOT, 'spec', '0.1', 'SPEC.md'), 'utf8'), /^# Lore specification\n\n\*\*Version 0\.1 \(draft\)\*\*/);
+    assert.match(SPEC, new RegExp(`^# Lore specification\\n\\n\\*\\*Version ${VERSION.replace('.', '\\.')} \\(draft\\)\\*\\*`));
   });
 });

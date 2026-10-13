@@ -3,12 +3,12 @@
 
 import { LoreFile } from './file.mjs';
 import { SECTION_RULES, isKnownSection } from './sections.mjs';
-import { SPEC_VERSION, formatErrors, validateFrontmatter } from './schema.mjs';
+import { SPEC_VERSION, SUPPORTED_VERSIONS, formatErrors, validateFrontmatter } from './schema.mjs';
 import { entryLevel, fieldLevel, fileLevel, isVisible, itemLevel } from './sensitivity.mjs';
 import { SLUG_RE, slugify, truncate, uniqueSlug } from './text.mjs';
 import { parsePersonDate } from './dates.mjs';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 export const GENERATOR = `lore-core ${VERSION}`;
 
 export class LoreError extends Error {
@@ -131,6 +131,48 @@ export class LoreFolder {
     return this.setting('language') ?? 'en';
   }
 
+  /**
+   * The spec version the folder declares in me.md. A folder keeps its version until the owner
+   * upgrades it (spec section 13): reading or editing a 0.1 folder never changes it.
+   */
+  get version() {
+    const v = this.setting('lore');
+    return typeof v === 'string' ? v : SPEC_VERSION;
+  }
+
+  /** Whether this library may write to the folder (spec section 13). */
+  get writable() {
+    return SUPPORTED_VERSIONS.includes(this.version);
+  }
+
+  /** The schemas files are checked against: those of the folder's version when supported. */
+  get schemaOptions() {
+    return { version: this.writable ? this.version : SPEC_VERSION };
+  }
+
+  /**
+   * Change fields of me.md, such as settings in an extension namespace. A value of null removes
+   * the field. Throws LoreError('invalid') without changing anything when the result would not be
+   * valid.
+   */
+  updateMe(patch) {
+    const file = this.me;
+    const next = { ...file.data };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null || v === undefined) delete next[k];
+      else next[k] = v;
+    }
+    const errors = validateFrontmatter('me', next, this.schemaOptions);
+    if (errors.length) throw new LoreError('invalid', formatErrors(errors).join('; '), { errors });
+    let changed = 0;
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null || v === undefined) changed += file.delete(k) ? 1 : 0;
+      else changed += file.set(k, v) ? 1 : 0;
+    }
+    if (changed) this.touch();
+    return changed > 0;
+  }
+
   get leapDay() {
     return this.setting('leap_day') === 'mar1' ? 'mar1' : 'feb28';
   }
@@ -168,7 +210,7 @@ export class LoreFolder {
   /** Create a person. Returns their slug. */
   createPerson(fields) {
     const data = orderFields(Object.fromEntries(Object.entries(fields ?? {}).filter(([, v]) => v !== undefined && v !== null)));
-    const errors = validateFrontmatter('person', data);
+    const errors = validateFrontmatter('person', data, this.schemaOptions);
     if (errors.length) throw new LoreError('invalid', formatErrors(errors).join('; '), { errors });
     const slug = uniqueSlug(slugify(data.name), new Set(this.slugs()));
     const path = `people/${slug}.md`;
@@ -189,7 +231,7 @@ export class LoreFolder {
       if (v === null || v === undefined) delete next[k];
       else next[k] = v;
     }
-    const errors = validateFrontmatter('person', next);
+    const errors = validateFrontmatter('person', next, this.schemaOptions);
     if (errors.length) throw new LoreError('invalid', formatErrors(errors).join('; '), { errors });
     let changed = 0;
     for (const [k, v] of Object.entries(patch)) {
@@ -334,7 +376,7 @@ export class LoreFolder {
     const stamp = (now instanceof Date ? now : new Date(now)).toISOString().replace(/\.\d{3}Z$/, 'Z');
     const lines = [
       '---',
-      `lore: "${SPEC_VERSION}"`,
+      `lore: "${this.version}"`,
       `generated: "${stamp}"`,
       `generator: ${generator}`,
       '---',
@@ -414,14 +456,14 @@ export class LoreFolder {
         add(path, 'error', e.message);
         return null;
       }
-      for (const msg of formatErrors(validateFrontmatter(type, file.data))) add(path, 'error', msg);
+      for (const msg of formatErrors(validateFrontmatter(type, file.data, this.schemaOptions))) add(path, 'error', msg);
       return file;
     };
 
     if (!this.has('me.md')) add('me.md', 'error', 'me.md is missing.');
     else {
       const me = check('me.md', 'me');
-      if (me && me.get('lore') !== SPEC_VERSION) add('me.md', 'error', `Lore version "${me.get('lore')}" is not supported (expected "${SPEC_VERSION}").`);
+      if (me && !SUPPORTED_VERSIONS.includes(me.get('lore'))) add('me.md', 'error', `Lore version "${me.get('lore')}" is not supported (supported: ${SUPPORTED_VERSIONS.map((v) => `"${v}"`).join(', ')}).`);
     }
     for (const area of AREA_FILES) if (this.has(area)) check(area, 'area');
 
@@ -453,7 +495,8 @@ export class LoreFolder {
       checkBody(file, path, add);
     }
     if (this.has('INDEX.md')) {
-      const strip = (t) => t.replace(/^generated: .*$/m, '');
+      // Only the listing matters: when and by which program it was generated does not.
+      const strip = (t) => t.replace(/^generated: .*$/m, '').replace(/^generator: .*$/m, '');
       if (strip(this.getText('INDEX.md')) !== strip(this.buildIndex({ now }))) add('INDEX.md', 'warning', 'INDEX.md is out of date.');
     }
     return issues;

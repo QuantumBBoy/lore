@@ -61,6 +61,8 @@ export function handle(data, { storage, now = new Date() }) {
     if (!action) return answer(t.unknownAction(input.action ?? '', Object.keys(ACTIONS)));
     const spec = ACTIONS[action];
     if (!exists && !spec.writes && action !== 'backup') return answer(t.noData);
+    // A folder from a newer spec version is read, never written (spec section 13).
+    if (exists && spec.writes && !folder.writable) return answer(t.unsupportedVersion(folder.version));
 
     let fresh = folder;
     if (!exists && spec.writes) {

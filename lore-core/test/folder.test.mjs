@@ -8,6 +8,7 @@ import { readFolder } from '../src/node.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const EXAMPLE = join(ROOT, 'examples', 'lore');
+const LORE_0_1 = join(ROOT, 'tests', 'fixtures', 'lore-0.1');
 const NOW = new Date('2026-10-13T16:00:00Z');
 const load = () => readFolder(EXAMPLE);
 
@@ -229,9 +230,49 @@ describe('index and validation', () => {
 
   test('a new folder', () => {
     const folder = LoreFolder.create({ name: 'Alex', language: 'es', timezone: 'Europe/Madrid' });
-    assert.equal(folder.getText('me.md'), '---\nlore: "0.1"\nname: Alex\nlanguage: es\ntimezone: Europe/Madrid\n---\n\n# Alex\n');
+    assert.equal(folder.getText('me.md'), '---\nlore: "0.2"\nname: Alex\nlanguage: es\ntimezone: Europe/Madrid\n---\n\n# Alex\n');
     assert.deepEqual(folder.validate(), []);
     assert.throws(() => LoreFolder.create({}), /needs a name/);
     assert.throws(() => LoreFolder.create({ name: 'A', timezone: 'nowhere' }), /timezone/);
+  });
+});
+
+describe('versions', () => {
+  test('a 0.1 folder loads, validates against the 0.1 schemas and is left as it is', () => {
+    const folder = readFolder(LORE_0_1);
+    assert.equal(folder.version, '0.1');
+    assert.ok(folder.writable);
+    assert.deepEqual(folder.validate({ now: NOW }), []);
+    for (const [path, text] of folder.toFiles()) assert.equal(text, readFileSync(join(LORE_0_1, path), 'utf8'), path);
+  });
+
+  test('editing a 0.1 folder keeps it at 0.1, INDEX.md included', () => {
+    const folder = readFolder(LORE_0_1);
+    folder.createPerson({ name: 'Ana Gil' });
+    folder.updateMe({ 'kin.lead_days': { family: 14 } });
+    folder.regenerateIndex({ now: NOW });
+    assert.match(folder.getText('me.md'), /^---\nlore: "0\.1"\n/);
+    assert.match(folder.getText('INDEX.md'), /^---\nlore: "0\.1"\n/);
+    assert.deepEqual(folder.validate({ now: NOW }), []);
+  });
+
+  test('updateMe sets and removes fields, and refuses invalid values', () => {
+    const folder = load();
+    assert.equal(folder.updateMe({ 'kin.remind_at': '09:30' }), true);
+    assert.equal(folder.setting('kin.remind_at'), '09:30');
+    assert.equal(folder.updateMe({ 'kin.remind_at': '09:30' }), false);
+    assert.equal(folder.updateMe({ 'kin.remind_at': null }), true);
+    assert.equal(folder.setting('kin.remind_at'), undefined);
+    const before = folder.getText('me.md');
+    assert.throws(() => folder.updateMe({ timezone: 'nowhere' }), LoreError);
+    assert.equal(folder.getText('me.md'), before);
+  });
+
+  test('a folder from a version this library does not know is not writable', () => {
+    const folder = load();
+    folder.setText('me.md', folder.getText('me.md').replace('lore: "0.2"', 'lore: "9.0"'));
+    assert.equal(folder.version, '9.0');
+    assert.equal(folder.writable, false);
+    assert.ok(folder.validate({ now: NOW }).some((i) => /Lore version "9\.0" is not supported \(supported: "0\.1", "0\.2"\)/.test(i.message)));
   });
 });

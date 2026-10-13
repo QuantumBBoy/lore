@@ -1,10 +1,12 @@
 # Lore specification
 
-**Version 0.1 (draft)** · 2026-10-13 · [JSON Schemas](schemas/) · License: Apache-2.0
+**Version 0.2 (draft)** · 2026-10-13 · [JSON Schemas](schemas/) · License: Apache-2.0 ·
+[Lore 0.1](https://quantumbboy.github.io/lore/spec/0.1/SPEC.md)
 
 Lore is an open, local-first file format for a person's life context: a folder of Markdown files
 with YAML frontmatter. People can read and edit it in any text editor, and any language model can
-read it, including small ones running on a phone. This document defines Lore 0.1.
+read it, including small ones running on a phone. This document defines Lore 0.2. Version 0.2 only
+adds to 0.1 (Appendix B): every 0.1 folder is read the same way.
 
 ## Contents
 
@@ -48,7 +50,7 @@ read it, including small ones running on a phone. This document defines Lore 0.1
 ### Non-goals
 
 - Lore is not a sync protocol, a database or a contacts format. It does not replace vCard; phone
-  numbers and addresses are out of scope in 0.1.
+  numbers and addresses are out of scope in this version.
 - Lore does not define a user interface or how a program talks to a model.
 
 ## 2. Conventions
@@ -248,7 +250,7 @@ The file level is the string value of `sensitivity`, or its `default` key when i
 
 | Field | Required | Type | Meaning |
 | --- | --- | --- | --- |
-| `lore` | yes | string `"0.1"` | Spec version of the folder. MUST be a quoted string. |
+| `lore` | yes | string `"0.2"` | Spec version of the folder. MUST be a quoted string. A 0.1 folder keeps `"0.1"` (section 13). |
 | `name` | yes | string | The owner's name. |
 | `aliases` | no | list of strings | Other names. |
 | `pronouns` | no | string | For example `they/them`. |
@@ -259,18 +261,21 @@ The file level is the string value of `sensitivity`, or its `default` key when i
 | `sensitivity` | no | level or map | Section 6.2. |
 | `<namespace>.<field>` | no | any | Extension fields (section 12). |
 
-The body is free Markdown about the owner. Lore 0.1 defines no sections for it.
+The body is free Markdown about the owner. This version defines no sections for it.
 
 <!-- example: me -->
 ```markdown
 ---
-lore: "0.1"
+lore: "0.2"
 name: Alex Moreno
 pronouns: they/them
 birthday: 1991-05-23
 language: es
 timezone: Europe/Madrid
 kin.export_every_days: 30
+kin.lead_days:
+  partner: 14
+  family: 7
 ---
 
 # Alex Moreno
@@ -319,7 +324,7 @@ refer to the person by slug, and it does not change when their name does. Schema
 | `kind` | no | `anniversary`, `name_day`, `memorial`, `other` | Lets consumers group dates. |
 | `sensitivity` | no | level | |
 
-Name days ("santo") are written as yearless dates. Lore 0.1 has no movable dates (for example,
+Name days ("santo") are written as yearless dates. This version has no movable dates (for example,
 dates relative to Easter).
 
 **Links** (`links`): `{person: <slug>, type: <type>}` means "*person* is this person's *type*".
@@ -356,7 +361,7 @@ In `marta-ruiz.md`, `{person: luis-ortega, type: partner}` says that Luis is Mar
 ### 8.3 Sections
 
 A person file's body MAY start with a level-1 heading (usually the name) and a short introduction.
-After that come sections. Lore 0.1 defines these, in this recommended order:
+After that come sections. This version defines these, in this recommended order:
 
 | Id | Canonical heading | Entries |
 | --- | --- | --- |
@@ -520,7 +525,7 @@ space. Inside, tokens are separated by single spaces:
 - If the braces at the end of a line do not parse as an attribute block, they are ordinary text.
   To end an entry with literal braces, add a final full stop or other character after them.
 
-Attributes defined in 0.1:
+Attributes defined by this spec:
 
 | Key | Value | Used in |
 | --- | --- | --- |
@@ -564,9 +569,9 @@ Body:
 <!-- example: index -->
 ```markdown
 ---
-lore: "0.1"
+lore: "0.2"
 generated: "2026-10-13T16:00:00Z"
-generator: lore-core 0.1.0
+generator: lore-core 0.2.0
 ---
 
 # Lore index
@@ -580,7 +585,7 @@ Generated. Do not edit. Open only the files you need.
 
 ## 11. Other life areas (reserved)
 
-Lore will grow beyond people. Lore 0.1 reserves these files and gives each a skeleton so early
+Lore will grow beyond people. This version reserves these files and gives each a skeleton so early
 adopters can write compatible content. Consumers MUST preserve them. Their frontmatter follows
 [`schemas/area.schema.json`](schemas/area.schema.json): `sensitivity` and extension fields are
 defined; any other field is allowed and kept.
@@ -625,14 +630,28 @@ Programs can add their own data in a **namespace**, using one rule everywhere: a
 | --- | --- | --- |
 | `kin` | [Kin](https://github.com/QuantumBBoy/lore) | Settings and capture metadata of the Kin app. |
 
-To register a namespace, open a pull request that adds a row.
+To register a namespace, open a pull request that adds a row. Owners SHOULD document their fields,
+as below, so other programs can preserve them knowingly and people can edit them by hand.
+
+**Fields of the `kin` namespace** (informative)
+
+| Where | Field | Value | Meaning |
+| --- | --- | --- | --- |
+| `me.md` | `kin.export_every_days` | integer | Remind the owner to back up after this many days. Default 30. |
+| `me.md` | `kin.export_every_changes` | integer | …or after this many changes. Default 20. |
+| `me.md` | `kin.lead_days` | map of group → integer | Days before a date to remind the owner, by relationship group: `partner`, `family`, `friend`, `colleague`, `other`. Defaults 14, 7, 3, 1, 3. |
+| `me.md` | `kin.remind_at` | `"HH:MM"` | Time of day for reminders. Default `"09:00"`. |
+| `me.md` | `kin.digest` | map: `every`, `at` | The summary the owner asked for: `every` is `day` or a weekday (`monday`…`sunday`), `at` is `"HH:MM"`. |
+| person | `kin.lead_days` | integer | Lead time for this person, instead of their group's. |
+| person | `kin.calendar_birthday` | person date | The birthday as last exported to a calendar (section 15.7). |
+| item of `dates` | `kin.calendar` | person date | The date as last exported to a calendar. |
 
 ## 13. Versioning and compatibility
 
 - The spec has versions `MAJOR.MINOR`. Before 1.0, any minor version MAY break compatibility; each
   release documents migrations in Appendix B. From 1.0 on, a minor version only adds optional
   fields, sections, attributes, areas or values, and a major version may break.
-- A folder declares its version in `me.md` (`lore: "0.1"`). It applies to every file in the
+- A folder declares its version in `me.md` (`lore: "0.2"`). It applies to every file in the
   folder.
 - A consumer that supports the declared version reads the folder normally.
 - A consumer that finds a version it does not support:
@@ -641,6 +660,10 @@ To register a namespace, open a pull request that adds a row.
     which case it writes following section 4.4.
 - Upgrading a folder to a new version is an explicit action of the owner, done by a program that
   supports both versions.
+- Version 0.2 only adds to 0.1: every 0.1 folder is also valid 0.2 content. A program that supports
+  0.2 MUST read and write 0.1 folders, following 0.1, and MUST leave `lore: "0.1"` as it is until
+  the owner upgrades. To upgrade, change `lore` to `"0.2"` in `me.md` and `INDEX.md`; nothing else
+  changes.
 - The JSON Schemas of each version are published under `https://quantumbboy.github.io/lore/spec/<version>/`
   and never change after release, except for errata.
 
@@ -699,6 +722,45 @@ When the owner names someone, consumers SHOULD match the name against `name` and
 every person, ignoring case and diacritics. If more than one person matches equally well, the
 consumer MUST ask the owner which one they mean, and MUST NOT write anything until they answer.
 
+### 15.6 Reminders
+
+*New in 0.2.*
+
+- A reminder for an occurrence (15.2) on day D, with a lead time of N days, falls on day D − N at a
+  time of day the owner chooses. N = 0 means on the day itself.
+- When D − N has passed but D has not, the reminder falls at the next chosen time of day that is
+  not after D. A consumer MAY skip it instead and say so.
+- Reminder times are in the device's time zone (15.1). A consumer MUST NOT hand over a reminder
+  whose time has already passed.
+- Lead times MAY depend on the relationship. How the owner sets them is up to each program (for
+  example Kin's `kin.lead_days`, section 12).
+- Reminders are output shown outside the folder (section 6.4, rule 4): a date, name or note whose
+  level is sensitive MUST NOT appear in one, and a sensitive date gets no reminder.
+- A program that hands reminders to another system (a notification scheduler, a calendar)
+  SHOULD remember what it handed over, and ask before creating the same reminder again.
+
+### 15.7 Calendar export
+
+*New in 0.2.*
+
+Consumers that copy dates into a calendar SHOULD follow these rules, which match 15.2.
+
+- Each date is an all-day event. Its title has only the person's name and what the date is
+  ("Cumpleaños de Marta Ruiz", "Marta Ruiz: Santa Marta").
+- A recurring date repeats yearly. In iCalendar ([RFC 5545](https://www.rfc-editor.org/rfc/rfc5545)):
+  `DTSTART;VALUE=DATE` on the full date when the year is known, otherwise on the next occurrence,
+  and `RRULE:FREQ=YEARLY`. A non-recurring date is a single event.
+- A date on 29 February repeats with `RRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1` (28 February in
+  common years) when `leap_day` is `feb28`, and with `RRULE:FREQ=YEARLY;BYYEARDAY=60`
+  (1 March in common years) when it is `mar1`.
+- Each event's `UID` stays the same from one export to the next, so a calendar that recognises it
+  updates the event instead of adding a copy. Derive it from the slug and the date (`birthday`, or
+  the label of the `dates` item).
+- Alarms (`VALARM`) MAY carry the reminders of 15.6.
+- Sensitive dates, and dates of a person whose `name` is sensitive, are not exported.
+- A program SHOULD record, in its namespace, each date's value as exported, and export again only
+  dates that are new or have changed.
+
 ## 16. Privacy and consent
 
 A Lore folder holds information about people other than its owner, who never agreed to be in it.
@@ -734,6 +796,15 @@ For programs that let a model read Lore directly:
 4. Compute dates in code (section 15), not in the model.
 
 ## Appendix B: changelog
+
+### 0.2 (draft, 2026-10-13)
+
+Adds rules for reminders (15.6) and calendar export (15.7), a list of the `kin` namespace's fields
+(section 12), and how programs that support 0.2 treat 0.1 folders (section 13). The JSON Schemas
+only change their version (`"0.2"`) and `$id` (`…/spec/0.2/…`).
+
+**Migrating from 0.1:** nothing is required. A 0.1 folder stays valid and is read the same way. To
+upgrade it, the owner changes `lore: "0.1"` to `lore: "0.2"` in `me.md` and `INDEX.md`.
 
 ### 0.1 (draft, 2026-10-13)
 

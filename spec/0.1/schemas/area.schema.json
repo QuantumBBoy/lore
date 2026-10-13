@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quantumbboy.github.io/lore/spec/0.1/area.schema.json",
+  "title": "Lore 0.1 life area (body.md, training.md, nutrition.md, routines.md, preferences.md) frontmatter",
+  "description": "Reserved skeleton. Lore 0.1 defines only sensitivity; other fields are allowed and must be preserved. See spec/SPEC.md, section 11.",
+  "type": "object",
+  "properties": {
+    "sensitivity": {
+      "$ref": "common.schema.json#/$defs/level"
+    }
+  },
+  "patternProperties": {
+    "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9_-]*)+$": true
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quantumbboy.github.io/lore/spec/0.1/person.schema.json",
+  "title": "Lore 0.1 person (people/<slug>.md) frontmatter",
+  "description": "One file per person. See spec/SPEC.md, section 8.",
+  "type": "object",
+  "required": [
+    "name"
+  ],
+  "properties": {
+    "name": {
+      "$ref": "common.schema.json#/$defs/name"
+    },
+    "aliases": {
+      "$ref": "common.schema.json#/$defs/aliases"
+    },
+    "pronouns": {
+      "$ref": "common.schema.json#/$defs/shortText",
+      "description": "How to refer to the person, e.g. she/her, they/them."
+    },
+    "relationship": {
+      "$ref": "common.schema.json#/$defs/shortText",
+      "description": "Relationship to the owner, e.g. friend, mother, colleague."
+    },
+    "birthday": {
+      "$ref": "common.schema.json#/$defs/personDate"
+    },
+    "dates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/dateItem"
+      }
+    },
+    "contact_cadence": {
+      "$ref": "common.schema.json#/$defs/cadence"
+    },
+    "last_contact": {
+      "$ref": "common.schema.json#/$defs/fullDate"
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/link"
+      }
+    },
+    "sensitivity": {
+      "description": "Sensitivity of this file: one level for the whole file, or a map with a default and per-field levels.",
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/level"
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "default": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "name": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "aliases": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "pronouns": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "relationship": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "birthday": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "dates": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "contact_cadence": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "last_contact": {
+              "$ref": "common.schema.json#/$defs/level"
+            },
+            "links": {
+              "$ref": "common.schema.json#/$defs/level"
+            }
+          },
+          "patternProperties": {
+            "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9_-]*)+$": {
+              "$ref": "common.schema.json#/$defs/level"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "patternProperties": {
+    "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9_-]*)+$": true
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "dateItem": {
+      "description": "An important date: anniversary, name day, memorial...",
+      "type": "object",
+      "required": [
+        "label",
+        "date"
+      ],
+      "properties": {
+        "label": {
+          "$ref": "common.schema.json#/$defs/shortText"
+        },
+        "date": {
+          "$ref": "common.schema.json#/$defs/personDate"
+        },
+        "recurring": {
+          "type": "boolean",
+          "default": true,
+          "description": "Repeats every year on the same month and day. Defaults to true."
+        },
+        "kind": {
+          "enum": [
+            "anniversary",
+            "name_day",
+            "memorial",
+            "other"
+          ]
+        },
+        "sensitivity": {
+          "$ref": "common.schema.json#/$defs/level"
+        }
+      },
+      "patternProperties": {
+        "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9_-]*)+$": true
+      },
+      "additionalProperties": false,
+      "if": {
+        "required": [
+          "date"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "pattern": "^--"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "recurring": {
+            "const": true
+          }
+        }
+      }
+    },
+    "link": {
+      "description": "A relationship to another person in the same folder: <person> is this person's <type>.",
+      "type": "object",
+      "required": [
+        "person",
+        "type"
+      ],
+      "properties": {
+        "person": {
+          "$ref": "common.schema.json#/$defs/slug"
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "maxLength": 40
+        },
+        "sensitivity": {
+          "$ref": "common.schema.json#/$defs/level"
+        }
+      },
+      "patternProperties": {
+        "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9_-]*)+$": true
+      },
+      "additionalProperties": false
+    }
+  }
+}

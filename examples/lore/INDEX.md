@@ -1,7 +1,7 @@
 ---
-lore: "0.1"
+lore: "0.2"
 generated: "2026-10-13T16:00:00Z"
-generator: lore-core 0.1.0
+generator: lore-core 0.2.0
 ---
 
 # Lore index

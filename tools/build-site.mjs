@@ -4,7 +4,8 @@
 //   _site/index.html                 landing page with the URL to paste into the app
 //   _site/skills/<name>/...          every skill, byte-for-byte
 //   _site/downloads/<name>-local.zip copy of a skill renamed <name>-local, for testing "Import local skill"
-//   _site/spec/<version>/            SPEC.md and the JSON Schemas, so schema $id URLs resolve
+//   _site/spec/<version>/            SPEC.md and the JSON Schemas of every version (earlier ones are
+//                                    frozen in spec/<version>/), so schema $id URLs keep resolving
 //
 // Usage: node tools/build-site.mjs [outDir]
 
@@ -62,10 +63,24 @@ export function buildLocalVariantZip(skillDir, name) {
   return { fileName: `${localName}.zip`, zip: createZip(entries) };
 }
 
-/** Spec version, from the version constant in common.schema.json. */
-export function specVersion() {
-  const common = JSON.parse(readFileSync(join(SPEC_DIR, 'schemas', 'common.schema.json'), 'utf8'));
+/** Version of the spec in a folder, from the version constant in its common.schema.json. */
+export function specVersion(dir = SPEC_DIR) {
+  const common = JSON.parse(readFileSync(join(dir, 'schemas', 'common.schema.json'), 'utf8'));
   return common.$defs.version.const;
+}
+
+/** Every spec version to publish: [{version, dir}], frozen ones first, then the current one. */
+export function specVersions() {
+  const frozen = readdirSync(SPEC_DIR, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && /^\d+\.\d+$/.test(d.name))
+    .map((d) => ({ version: d.name, dir: join(SPEC_DIR, d.name) }))
+    .sort((a, b) => a.version.localeCompare(b.version, 'en', { numeric: true }));
+  for (const f of frozen) {
+    if (specVersion(f.dir) !== f.version) throw new Error(`spec/${f.version} holds the schemas of version ${specVersion(f.dir)}`);
+  }
+  const current = { version: specVersion(), dir: SPEC_DIR };
+  if (frozen.some((f) => f.version === current.version)) throw new Error(`spec/${current.version} is frozen, but spec/ is still ${current.version}`);
+  return [...frozen, current];
 }
 
 function landingPage(skills, downloads, version) {
@@ -159,11 +174,13 @@ export function buildSite(outDir = join(ROOT, '_site')) {
     downloads.push(fileName);
   }
 
+  for (const { version: v, dir } of specVersions()) {
+    const specOut = join(outDir, 'spec', v);
+    mkdirSync(specOut, { recursive: true });
+    cpSync(join(dir, 'SPEC.md'), join(specOut, 'SPEC.md'));
+    for (const f of readdirSync(join(dir, 'schemas'))) cpSync(join(dir, 'schemas', f), join(specOut, f));
+  }
   const version = specVersion();
-  const specOut = join(outDir, 'spec', version);
-  mkdirSync(specOut, { recursive: true });
-  cpSync(join(SPEC_DIR, 'SPEC.md'), join(specOut, 'SPEC.md'));
-  for (const f of readdirSync(join(SPEC_DIR, 'schemas'))) cpSync(join(SPEC_DIR, 'schemas', f), join(specOut, f));
 
   const skills = results.map((r) => r.skill).sort((a, b) => a.name.localeCompare(b.name));
   writeFileSync(join(outDir, 'index.html'), landingPage(skills, downloads, version));

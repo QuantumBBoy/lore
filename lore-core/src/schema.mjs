@@ -4,8 +4,12 @@
 
 import { SCHEMAS } from './schemas.generated.mjs';
 
-export const SPEC_VERSION = '0.1';
-export const SCHEMA_BASE = `https://quantumbboy.github.io/lore/spec/${SPEC_VERSION}/`;
+/** The version new folders get. */
+export const SPEC_VERSION = '0.2';
+/** Versions this library reads and writes (spec section 13). 0.2 only adds to 0.1. */
+export const SUPPORTED_VERSIONS = ['0.1', '0.2'];
+export const schemaBase = (version = SPEC_VERSION) => `https://quantumbboy.github.io/lore/spec/${version}/`;
+export const SCHEMA_BASE = schemaBase();
 
 const ANNOTATIONS = new Set(['$schema', '$id', '$defs', 'title', 'description', '$comment', 'default']);
 
@@ -218,12 +222,14 @@ function checkObject(schema, value, path, baseId, errors) {
 const TYPES = { me: 'me', person: 'person', index: 'index', area: 'area', common: 'common' };
 
 /**
- * Validate frontmatter data of a file type ('me', 'person', 'index' or 'area').
+ * Validate frontmatter data of a file type ('me', 'person', 'index' or 'area') against the schemas
+ * of a spec version (default: the current one).
  * @returns {{path: string, field: string, message: string}[]} empty when valid
  */
-export function validateFrontmatter(type, data) {
+export function validateFrontmatter(type, data, { version = SPEC_VERSION } = {}) {
   if (!TYPES[type]) throw new Error(`unknown file type "${type}"`);
-  const id = `${SCHEMA_BASE}${type}.schema.json`;
+  if (!SUPPORTED_VERSIONS.includes(version)) throw new Error(`unsupported Lore version "${version}"`);
+  const id = `${schemaBase(version)}${type}.schema.json`;
   const errors = [];
   check(SCHEMAS[id], data, '', id, undefined, errors);
   const seen = new Set();

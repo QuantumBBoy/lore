@@ -172,14 +172,17 @@ describe('Pages site', () => {
     assert.equal(zip.status(), 200);
     const skillMd = await page.request.get(server.url('skills/kin-spike/SKILL.md'));
     assert.match(await skillMd.text(), /^---\nname: kin-spike\n/);
-    // Schema $id URLs resolve on the published site.
-    for (const name of ['common', 'me', 'person', 'index', 'area']) {
-      const res = await page.request.get(server.url(`spec/0.1/${name}.schema.json`));
-      assert.equal(res.status(), 200, `${name}.schema.json`);
-      const id = new URL((await res.json()).$id);
-      assert.equal(id.pathname, `/lore/spec/0.1/${name}.schema.json`);
+    // Schema $id URLs of every version resolve on the published site.
+    for (const version of ['0.1', '0.2']) {
+      for (const name of ['common', 'me', 'person', 'index', 'area']) {
+        const res = await page.request.get(server.url(`spec/${version}/${name}.schema.json`));
+        assert.equal(res.status(), 200, `${version}/${name}.schema.json`);
+        const schema = await res.json();
+        assert.equal(new URL(schema.$id).pathname, `/lore/spec/${version}/${name}.schema.json`);
+        if (name === 'common') assert.equal(schema.$defs.version.const, version);
+      }
+      assert.match(await (await page.request.get(server.url(`spec/${version}/SPEC.md`))).text(), new RegExp(`\\*\\*Version ${version.replace('.', '\\.')} \\(draft\\)\\*\\*`));
     }
-    assert.equal((await page.request.get(server.url('spec/0.1/SPEC.md'))).status(), 200);
     assert.deepEqual(errors, []);
     await context.close();
   });

@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://quantumbboy.github.io/lore/spec/0.1/common.schema.json",
-  "title": "Lore 0.1 common definitions",
-  "description": "Shared value types for Lore 0.1 frontmatter. See spec/SPEC.md, section 5.",
+  "$id": "https://quantumbboy.github.io/lore/spec/0.2/common.schema.json",
+  "title": "Lore 0.2 common definitions",
+  "description": "Shared value types for Lore 0.2 frontmatter. See spec/SPEC.md, section 5.",
   "$defs": {
     "version": {
       "description": "Lore spec version the folder conforms to. A quoted string.",
-      "const": "0.1"
+      "const": "0.2"
     },
     "level": {
       "description": "Sensitivity level. Absent means private.",

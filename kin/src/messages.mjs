@@ -116,6 +116,7 @@ const en = {
   storageFull: 'Kin has run out of space on this phone. Make a backup, then delete old notes.',
   failed: (msg) => `Kin could not do that: ${msg}`,
   noData: 'Kin has no data yet. Tell me something about someone to start.',
+  unsupportedVersion: (v) => `Your data is in Lore format ${v}, which this version of Kin cannot change. It can still read it. Update Kin to make changes.`,
 };
 
 const es = {
@@ -194,6 +195,7 @@ const es = {
   storageFull: 'Kin se ha quedado sin espacio en este teléfono. Haz una copia de seguridad y borra notas antiguas.',
   failed: (msg) => `Kin no ha podido hacerlo: ${msg}`,
   noData: 'Kin aún no tiene datos. Cuéntame algo de alguien para empezar.',
+  unsupportedVersion: (v) => `Tus datos están en formato Lore ${v}, que esta versión de Kin no puede modificar. Puede leerlos. Actualiza Kin para hacer cambios.`,
 };
 
 const CATALOGS = { en, es };

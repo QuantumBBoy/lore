@@ -6,16 +6,17 @@ import { describe, test } from 'node:test';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { LoreFile } from '../src/file.mjs';
-import { SCHEMA_BASE, formatErrors, isRealDate, validateFrontmatter } from '../src/schema.mjs';
+import { SUPPORTED_VERSIONS, formatErrors, isRealDate, schemaBase, validateFrontmatter } from '../src/schema.mjs';
 import { generateSchemasModule, OUT } from '../../tools/gen-schemas.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const ajv = new Ajv2020({ strict: true, allErrors: true });
 addFormats(ajv);
-for (const f of readdirSync(join(ROOT, 'spec', 'schemas'))) {
-  ajv.addSchema(JSON.parse(readFileSync(join(ROOT, 'spec', 'schemas', f), 'utf8')));
+// Every version's schemas: the current ones, and earlier ones frozen under spec/<version>/.
+for (const dir of [join(ROOT, 'spec', '0.1', 'schemas'), join(ROOT, 'spec', 'schemas')]) {
+  for (const f of readdirSync(dir)) ajv.addSchema(JSON.parse(readFileSync(join(dir, f), 'utf8')));
 }
-const reference = (type, data) => ajv.getSchema(`${SCHEMA_BASE}${type}.schema.json`)(data);
+const reference = (type, data, version) => ajv.getSchema(`${schemaBase(version)}${type}.schema.json`)(data);
 
 test('the embedded schemas match spec/schemas (run tools/gen-schemas.mjs)', () => {
   assert.equal(readFileSync(OUT, 'utf8'), generateSchemasModule());
@@ -96,12 +97,14 @@ describe('agrees with Ajv on valid and invalid documents', () => {
   cases.push(['area', { sensitivity: 'x' }]);
   cases.push(['area', {}]);
 
-  for (const [type, data] of cases) {
-    test(`${type} ${JSON.stringify(data).slice(0, 90)}`, () => {
-      const expected = reference(type, data);
-      const errors = validateFrontmatter(type, data);
-      assert.equal(errors.length === 0, expected, `lore-core says ${JSON.stringify(formatErrors(errors))}, Ajv says ${expected}`);
-    });
+  for (const version of SUPPORTED_VERSIONS) {
+    for (const [type, data] of cases) {
+      test(`${version} ${type} ${JSON.stringify(data).slice(0, 90)}`, () => {
+        const expected = reference(type, data, version);
+        const errors = validateFrontmatter(type, data, { version });
+        assert.equal(errors.length === 0, expected, `lore-core says ${JSON.stringify(formatErrors(errors))}, Ajv says ${expected}`);
+      });
+    }
   }
 });
 
@@ -115,7 +118,7 @@ describe('messages', () => {
     ]);
     assert.deepEqual(msg('person', { aliases: ['A'] }), ['the frontmatter needs the field "name"']);
     assert.deepEqual(msg('person', { name: 'Ana', dates: [{ label: 'Santo', date: '--04-12', recurring: false }] }), ['dates.0.recurring must be true']);
-    assert.match(msg('me', { lore: 0.1, name: 'A' })[0], /^lore must be "0\.1"/);
+    assert.match(msg('me', { lore: 0.1, name: 'A' })[0], /^lore must be "0\.2"/);
     assert.match(msg('person', { name: 'Ana', contact_cadence: 'every 2 weeks' })[0], /^contact_cadence is not valid: .*2w/);
   });
 });

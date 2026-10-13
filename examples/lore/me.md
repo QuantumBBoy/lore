@@ -1,5 +1,5 @@
 ---
-lore: "0.1"
+lore: "0.2"
 name: Alex Moreno
 pronouns: they/them
 birthday: 1991-05-23
