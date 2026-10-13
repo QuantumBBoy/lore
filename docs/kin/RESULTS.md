@@ -15,6 +15,7 @@ Gemma 4, on 2026-10-13. The model size (E2B or E4B) was not recorded.
 | Backup panel: copy as text | Works |
 | Backup panel: file picker, preview, merge, undo | Works |
 | Backup panel layout | Had to scroll to see all of it |
+| Removing the skill and adding it again from the same URL | Data still there |
 
 ## What we learned
 

@@ -101,7 +101,8 @@ you would want yours treated:
 - **One note:** "Borra la nota de Marta sobre …" / "Delete the note about … from Marta's file".
 - **One person:** "Borra a Luis" / "Delete Luis". Kin asks first.
 - **Everything:** delete the Gallery app. This removes all of Kin's storage on the phone. Backups
-  you saved elsewhere are not affected.
+  you saved elsewhere are not affected. Removing the skill from the app is not enough: the data
+  stays, and comes back if you add the skill again.
 
 ## Storage belongs to the origin, not to the skill
 
