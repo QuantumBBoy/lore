@@ -139,6 +139,11 @@ describe('capture', () => {
     assert.match(text, /- 2026-10-12: Pottery class\n/);
   });
 
+  test('names with filler words, and captures without a kind', () => {
+    assert.equal(say({ action: 'capture', person: 'a Marta', kind: 'note', text: 'Hablamos', lang: 'es' }), 'Guardado en Marta Ruiz (notas): Hablamos');
+    assert.equal(say({ action: 'capture', person: "Sam's", text: 'Likes chess', lang: 'en' }), 'Saved for Sam Okafor (notes): Likes chess');
+  });
+
   test('bad input is explained', () => {
     assert.equal(say({ action: 'capture', person: 'Marta', kind: 'recipe', text: 'x', lang: 'en' }), 'I don\'t know what kind of note "recipe" is. Use one of: gift_idea, gift_given, follow_up, promise, note, date, preference, plan.');
     assert.equal(say({ action: 'capture', kind: 'note', text: 'x', lang: 'en' }), 'Which person?');

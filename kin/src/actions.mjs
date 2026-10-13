@@ -95,10 +95,18 @@ const reply = (text, extra = {}) => ({ text, ...extra });
  * Find who the owner means; create them only after the owner confirmed. Before writing, a match
  * that is only a near spelling ("Marte" for Marta) is a question, not a match.
  */
+const FILLER = /^(?:a|al|la|el|de|del|para|con|mi|to|for|with|my|the|about|sobre)\s+|(?:'s|’s)$/giu;
+
 function resolvePerson(ctx, query, { create = false, write = create } = {}) {
-  const q = cleanText(query);
+  let q = cleanText(query);
   if (!q) return { reply: ctx.t.needPerson };
-  const m = matchPerson(ctx.folder, q);
+  let m = matchPerson(ctx.folder, q);
+  // "a Marta", "de Marta", "Marta's": try again without the filler words.
+  const bare = cleanText(q.replace(FILLER, '').replace(FILLER, ''));
+  if (m.status === 'none' && bare && bare !== q) {
+    const retry = matchPerson(ctx.folder, bare);
+    if (retry.status !== 'none') [q, m] = [bare, retry];
+  }
   if (m.status === 'match' && (m.score >= 0.75 || !write)) return { slug: m.slug, name: m.name };
   if (m.status === 'match') m.suggestions = [{ name: m.name }];
   if (m.status === 'ambiguous') return { reply: ctx.t.ambiguous(q, m.candidates.map((c) => c.name)) };
@@ -138,7 +146,8 @@ const isOpen = (e) => e.checked !== true && e.attrs.status !== 'cancelled';
 
 function capture(ctx, input) {
   const { t } = ctx;
-  const kindInfo = normalizeKind(input.kind);
+  // Without a kind, keep the information as a note rather than lose it.
+  const kindInfo = input.kind === undefined || input.kind === null || input.kind === '' ? { kind: 'note', sub: null } : normalizeKind(input.kind);
   if (!kindInfo) return reply(t.badKind(input.kind ?? '', KINDS));
   const text = cleanText(input.text);
   if (!text) return reply(t.needText);
