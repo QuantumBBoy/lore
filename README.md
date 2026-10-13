@@ -14,6 +14,8 @@ haven't talked to in a while. Nothing leaves the device.
   on iPhone after the app is closed ([results](docs/spike/RESULTS.md)).
 - **Phase 2, Lore spec 0.1: draft.** Read [spec/SPEC.md](spec/SPEC.md); the
   [JSON Schemas](spec/schemas/) and a fictional [example folder](examples/lore/) go with it.
+- **Phase 3, lore-core: done.** A dependency-free JavaScript library that reads, edits, validates
+  and queries Lore folders ([lore-core/README.md](lore-core/README.md)).
 
 Skill URL for the app ("Load skill from URL"):
 
@@ -27,9 +29,11 @@ https://quantumbboy.github.io/lore/skills/kin-spike
 | --- | --- |
 | `spec/` | The Lore specification and its JSON Schemas. |
 | `examples/lore/` | A complete example Lore folder. Everyone in it is fictional. |
+| `lore-core/` | The JavaScript library for Lore folders, with its tests. |
 | `skills/<name>/` | Gallery skills, served from GitHub Pages. |
 | `tools/validate-skills.mjs` | Strict `SKILL.md` validator. It mirrors the app's parser, which is much stricter than YAML. |
 | `tools/build-site.mjs` | Builds the Pages site in `_site/`: skills, and the spec under `spec/<version>/`. |
+| `tools/gen-schemas.mjs` | Embeds the JSON Schemas into lore-core. |
 | `tests/` | Spec consistency tests, headless-browser tests that call each skill like the app does, and a static privacy scan. |
 | `.github/workflows/` | CI on every push; deploy to GitHub Pages from `main`. |
 
@@ -39,7 +43,7 @@ Requires Node.js 22+.
 
 ```sh
 npm ci
-npx playwright install chromium   # once, for the browser tests
+npx playwright install chromium webkit   # once, for the browser tests
 npm run validate                  # check every SKILL.md
 npm run build                     # build _site/
 npm test                          # unit, privacy and browser tests

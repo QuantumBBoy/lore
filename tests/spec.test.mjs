@@ -219,7 +219,7 @@ describe('example folder', () => {
   });
 
   test('INDEX.md contains no sensitive data', () => {
-    const words = (s) => s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').match(/[a-z0-9]+/g) ?? [];
+    const words = (s) => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').match(/[a-z0-9]+/g) ?? [];
     const indexText = ` ${words(index.body).join(' ')} `;
     let sensitiveCount = 0;
     for (const slug of slugs) {
