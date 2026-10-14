@@ -106,9 +106,10 @@ words in `kin/src/when.mjs`, and the texts in both page templates.
 
 Kin, lore-core and `package.json` share one version. To release: bump `KIN_VERSION`
 (`kin/src/version.mjs`), `VERSION` (`lore-core/src/folder.mjs`) and `package.json`, add a section
-`## Kin X.Y.Z, …` at the top of `CHANGELOG.md` (a test checks both), merge to `main`, and push a
-tag `vX.Y.Z`. The release workflow runs CI and publishes the GitHub release with that section as
-notes. The skill itself is live as soon as `main` deploys to GitHub Pages.
+`## Kin X.Y.Z, …` at the top of `CHANGELOG.md` (a test checks both), and merge to `main`. The
+release workflow sees a version without a release, runs CI and publishes the GitHub release
+`vX.Y.Z` (GitHub creates the tag) with that section as notes. The skill itself is live as soon as
+`main` deploys to GitHub Pages.
 
 ## Pull requests
 

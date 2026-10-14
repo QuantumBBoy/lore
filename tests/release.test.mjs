@@ -1,5 +1,5 @@
-// A release is tagged vX.Y.Z (see .github/workflows/release.yml). Kin, lore-core and package.json
-// share that version, and CHANGELOG.md must have its notes.
+// Each version on main becomes a GitHub release vX.Y.Z (.github/workflows/release.yml). Kin,
+// lore-core and package.json share that version, and CHANGELOG.md must have its notes.
 
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
