@@ -102,6 +102,14 @@ registration.
 `lore-core/src/i18n.mjs`, the section titles in `lore-core/src/sections.mjs`, the date and period
 words in `kin/src/when.mjs`, and the texts in both page templates.
 
+## Releases
+
+Kin, lore-core and `package.json` share one version. To release: bump `KIN_VERSION`
+(`kin/src/version.mjs`), `VERSION` (`lore-core/src/folder.mjs`) and `package.json`, add a section
+`## Kin X.Y.Z, …` at the top of `CHANGELOG.md` (a test checks both), merge to `main`, and push a
+tag `vX.Y.Z`. The release workflow runs CI and publishes the GitHub release with that section as
+notes. The skill itself is live as soon as `main` deploys to GitHub Pages.
+
 ## Pull requests
 
 - Keep each pull request to one change, in small commits with clear messages.
